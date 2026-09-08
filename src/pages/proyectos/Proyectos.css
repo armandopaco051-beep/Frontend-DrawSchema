@@ -1,0 +1,240 @@
+.projects-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+.projects-toolbar {
+  align-items: stretch;
+}
+
+.user-filter {
+  max-width: 220px;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 1px solid #292929;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(78, 124, 255, 0.08), transparent 36%),
+    #111111;
+  padding: 16px;
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.project-card:hover,
+.project-card.selected {
+  border-color: #5c82ff;
+  background:
+    linear-gradient(135deg, rgba(78, 124, 255, 0.16), transparent 42%),
+    #141a24;
+  transform: translateY(-2px);
+}
+
+.project-card-main {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.project-card-main span {
+  color: #7f9fd0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.project-card-main h2 {
+  margin: 8px 0;
+  color: #ffffff;
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-size: 22px;
+}
+
+.project-card-main p {
+  margin: 0 0 18px;
+  color: #c9d3e0;
+  line-height: 1.55;
+}
+
+.project-card-main small {
+  color: #8191a7;
+}
+
+.projects-side-panel {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+}
+
+.project-floating-panel {
+  width: min(100%, 560px);
+}
+
+.users-form textarea,
+.member-form input {
+  border: 1px solid #333333;
+  border-radius: 12px;
+  outline: none;
+  background: #090909;
+  color: #ffffff;
+  padding: 12px;
+}
+
+.users-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.users-form textarea:focus,
+.member-form input:focus {
+  border-color: #f5f5f5;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.members-box {
+  border-top: 1px solid #292929;
+  padding-top: 20px;
+}
+
+.member-form {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  gap: 12px;
+}
+
+.member-form label {
+  display: grid;
+  gap: 8px;
+  color: #d8d8d8;
+  font-weight: 700;
+}
+
+.member-form .primary-action {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.members-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.member-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #292929;
+  border-radius: 12px;
+  background: #101010;
+  padding: 10px;
+}
+
+.member-item span {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.member-item small,
+.panel-note {
+  color: #9ca3af;
+}
+
+.compact {
+  padding: 14px 0 0;
+}
+
+.users-page-light .project-card {
+  border-color: #ddddd7;
+  background:
+    linear-gradient(135deg, rgba(17, 17, 17, 0.04), transparent 36%),
+    #ffffff;
+}
+
+.users-page-light .project-card:hover,
+.users-page-light .project-card.selected {
+  border-color: #111111;
+  background:
+    linear-gradient(135deg, rgba(17, 17, 17, 0.08), transparent 42%),
+    #f7f7f4;
+}
+
+.users-page-light .project-card-main h2,
+.users-page-light .member-item span,
+.users-page-light .member-form label {
+  color: #111111;
+}
+
+.users-page-light .project-card-main p,
+.users-page-light .project-card-main small,
+.users-page-light .member-item small,
+.users-page-light .panel-note {
+  color: #4b5563;
+}
+
+.users-page-light .users-form textarea,
+.users-page-light .member-form input {
+  border-color: #d4d4ce;
+  background: #f7f7f4;
+  color: #111111;
+}
+
+.users-page-light .users-form textarea:focus,
+.users-page-light .member-form input:focus {
+  border-color: #111111;
+  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.08);
+}
+
+.users-page-light .members-box {
+  border-top-color: #ddddd7;
+}
+
+.users-page-light .member-item {
+  border-color: #ddddd7;
+  background: #ffffff;
+}
+
+@media (max-width: 1120px) {
+  .projects-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .projects-toolbar {
+    flex-direction: column;
+  }
+
+  .user-filter {
+    max-width: none;
+  }
+
+  .project-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .member-form {
+    grid-template-columns: 1fr;
+  }
+}

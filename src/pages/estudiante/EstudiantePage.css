@@ -1,0 +1,522 @@
+.student-projects-home {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.student-panel,
+.diagrammer-left-panel,
+.diagram-flow-panel,
+.diagrammer-right-panel {
+  min-width: 0;
+  border: 1px solid #2a2a2a;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 120px),
+    #141414;
+  padding: 20px;
+}
+
+.student-create-project-panel {
+  align-self: start;
+}
+
+.student-project-form,
+.diagrammer-left-panel,
+.diagrammer-right-panel,
+.selected-class-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.student-project-form input,
+.student-project-form textarea,
+.student-create-row input,
+.diagram-canvas-topbar input,
+.diagrammer-right-panel input {
+  width: 100%;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  outline: none;
+  background: #080808;
+  color: #ffffff;
+  font: inherit;
+  padding: 0 13px;
+}
+
+.student-project-form input,
+.student-create-row input,
+.diagram-canvas-topbar input,
+.diagrammer-right-panel input {
+  height: 44px;
+}
+
+.student-project-form textarea {
+  min-height: 94px;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  outline: none;
+  background: #080808;
+  color: #ffffff;
+  font: inherit;
+  padding: 12px 13px;
+  resize: vertical;
+}
+
+.student-project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.student-project-card {
+  display: grid;
+  min-height: 190px;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid #292929;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(92, 130, 255, 0.1), transparent 42%),
+    #101010;
+  color: #f5f5f5;
+  cursor: pointer;
+  padding: 18px;
+  text-align: left;
+  transition:
+    border-color 170ms ease,
+    background 170ms ease,
+    transform 170ms ease;
+}
+
+.student-project-card:hover {
+  border-color: #5c82ff;
+  background:
+    linear-gradient(135deg, rgba(92, 130, 255, 0.18), transparent 46%),
+    #151b27;
+  transform: translateY(-3px);
+}
+
+.student-project-card span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: #1d2737;
+  color: #8fb6ff;
+}
+
+.student-project-card strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-size: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-project-card small {
+  display: -webkit-box;
+  min-height: 42px;
+  overflow: hidden;
+  color: #9ca3af;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.student-project-card em {
+  align-self: end;
+  color: #dbeafe;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.diagrammer-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.diagrammer-header p {
+  margin: 0 0 5px;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.diagrammer-header h1 {
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagrammer-save {
+  min-width: 128px;
+}
+
+.diagrammer-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(560px, 1fr) 330px;
+  gap: 14px;
+  min-height: calc(100svh - 140px);
+}
+
+.student-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.diagram-list {
+  display: grid;
+  max-height: 58svh;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.diagram-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #292929;
+  border-radius: 14px;
+  background: #101010;
+  color: #f5f5f5;
+  padding: 10px;
+  transition:
+    border-color 170ms ease,
+    background 170ms ease;
+}
+
+.diagram-card:hover,
+.diagram-card.active {
+  border-color: #5c82ff;
+  background: #151b27;
+}
+
+.diagram-card > button:first-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.diagram-card strong {
+  display: block;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagram-card small {
+  display: block;
+  margin-top: 4px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.diagram-flow-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.diagram-canvas-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.diagram-canvas-topbar label,
+.diagrammer-right-panel label {
+  display: grid;
+  gap: 8px;
+  color: #ededed;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.react-flow-canvas {
+  position: relative;
+  min-height: 640px;
+  overflow: hidden;
+  border: 1px solid #282828;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(92, 130, 255, 0.1), transparent 42%),
+    #090909;
+}
+
+.react-flow-canvas .react-flow {
+  background: transparent;
+}
+
+.react-flow__node-classNode {
+  width: 245px;
+}
+
+.flow-class-node {
+  overflow: hidden;
+  border: 1px solid #4b5563;
+  border-radius: 13px;
+  background: #171717;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  cursor: grab;
+  user-select: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.flow-class-node:hover,
+.flow-class-node.selected {
+  border-color: #8fb6ff;
+  box-shadow: 0 22px 52px rgba(18, 71, 178, 0.28);
+  transform: translateY(-1px);
+}
+
+.flow-class-node header {
+  border-bottom: 1px solid #323232;
+  background: #262626;
+  padding: 12px 14px;
+}
+
+.flow-class-node strong {
+  display: block;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-class-node div,
+.flow-class-node footer {
+  display: grid;
+  gap: 4px;
+  min-height: 46px;
+  padding: 10px 14px;
+}
+
+.flow-class-node div {
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.flow-class-node p {
+  margin: 0;
+  color: #dbeafe;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+}
+
+.flow-class-node .muted-line {
+  color: #737373;
+}
+
+.flow-handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #090909;
+  background: #8fb6ff;
+}
+
+.flow-empty-overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #9ca3af;
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.flow-empty-overlay strong {
+  color: #ffffff;
+  font-size: 18px;
+}
+
+.diagram-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diagram-stats span,
+.class-items-list span {
+  border: 1px solid #303030;
+  border-radius: 999px;
+  background: #101010;
+  color: #b9c6d7;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.selected-class-panel {
+  border-top: 1px solid #2c2c2c;
+  padding-top: 16px;
+}
+
+.class-items-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.users-page-light .student-panel,
+.users-page-light .diagrammer-left-panel,
+.users-page-light .diagram-flow-panel,
+.users-page-light .diagrammer-right-panel,
+.users-page-light .student-project-card,
+.users-page-light .diagram-card {
+  border-color: #d5d5cf;
+  background: #ffffff;
+}
+
+.users-page-light .student-project-card:hover,
+.users-page-light .diagram-card:hover,
+.users-page-light .diagram-card.active {
+  border-color: #111111;
+  background: #f7f7f4;
+}
+
+.users-page-light .student-project-card strong,
+.users-page-light .diagram-card strong,
+.users-page-light .diagrammer-header h1,
+.users-page-light .diagram-canvas-topbar label,
+.users-page-light .diagrammer-right-panel label,
+.users-page-light .flow-empty-overlay strong {
+  color: #111111;
+}
+
+.users-page-light .student-project-card small,
+.users-page-light .diagram-card small,
+.users-page-light .diagrammer-header p,
+.users-page-light .flow-empty-overlay {
+  color: #4b5563;
+}
+
+.users-page-light .student-project-card span {
+  background: #e8eef8;
+  color: #2563eb;
+}
+
+.users-page-light .student-project-form input,
+.users-page-light .student-project-form textarea,
+.users-page-light .student-create-row input,
+.users-page-light .diagram-canvas-topbar input,
+.users-page-light .diagrammer-right-panel input {
+  border-color: #d4d4ce;
+  background: #f7f7f4;
+  color: #111111;
+}
+
+.users-page-light .react-flow-canvas {
+  border-color: #d6d6d0;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08), transparent 42%),
+    #f7f7f4;
+}
+
+.users-page-light .flow-class-node {
+  border-color: #c4c4bd;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(17, 17, 17, 0.1);
+}
+
+.users-page-light .flow-class-node header {
+  border-bottom-color: #dddddc;
+  background: #ecece7;
+}
+
+.users-page-light .flow-class-node strong,
+.users-page-light .flow-class-node p {
+  color: #111111;
+}
+
+.users-page-light .flow-class-node div,
+.users-page-light .flow-class-node footer,
+.users-page-light .selected-class-panel {
+  border-color: #e5e5df;
+}
+
+.users-page-light .diagram-stats span,
+.users-page-light .class-items-list span {
+  border-color: #d4d4ce;
+  background: #ffffff;
+  color: #4b5563;
+}
+
+.users-page-light .flow-handle {
+  border-color: #ffffff;
+  background: #2563eb;
+}
+
+@media (max-width: 1280px) {
+  .diagrammer-shell {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .diagrammer-right-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 980px) {
+  .student-projects-home,
+  .diagrammer-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .diagrammer-header {
+    grid-template-columns: 1fr;
+  }
+
+  .diagrammer-save {
+    width: 100%;
+  }
+
+  .student-project-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .diagram-canvas-topbar,
+  .student-create-row {
+    grid-template-columns: 1fr;
+  }
+
+  .react-flow-canvas {
+    min-height: 500px;
+  }
+}
