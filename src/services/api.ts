@@ -1,5 +1,17 @@
 export const API_URL = 'http://127.0.0.1:8001'
 
+export class ApiError extends Error {
+  status: number
+  detail: unknown
+
+  constructor(message: string, status: number, detail: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+}
+
 type RequestOptions<TBody> = {
   body?: TBody
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -28,7 +40,11 @@ export async function apiRequest<TResponse, TBody = unknown>(
   const data = await response.json().catch(() => null)
 
   if (!response.ok) {
-    throw new Error(data?.detail ?? data?.message ?? 'Error en la peticion. Revisa el backend.')
+    throw new ApiError(
+      data?.detail ?? data?.message ?? 'Error en la peticion. Revisa el backend.',
+      response.status,
+      data?.detail,
+    )
   }
 
   return data as TResponse

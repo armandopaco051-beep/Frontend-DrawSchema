@@ -242,7 +242,6 @@ export function ProyectosPage({
     try {
       await agregarMiembro(selectedProyecto.id, {
         usuario_codigo: miembroForm.usuario_codigo,
-        id_proyecto: selectedProyecto.id,
         id_rol: miembroForm.id_rol,
       })
       setMessage('Miembro agregado correctamente.')

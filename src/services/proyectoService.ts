@@ -73,6 +73,16 @@ export function agregarMiembro(proyectoId: number, miembro: ProyectoUsuarioCreat
   )
 }
 
+export function actualizarMiembro(proyectoId: number, usuarioCodigo: string, miembro: Pick<ProyectoUsuarioCreate, 'id_rol'>) {
+  return apiRequest<ProyectoUsuarioResponse, Pick<ProyectoUsuarioCreate, 'id_rol'>>(
+    `/proyectos/${proyectoId}/miembros/${usuarioCodigo}`,
+    {
+      method: 'PUT',
+      body: miembro,
+    },
+  )
+}
+
 export function listarMiembros(proyectoId: number) {
   return apiRequest<ProyectoUsuarioResponse[]>(`/proyectos/${proyectoId}/miembros`)
 }

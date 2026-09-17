@@ -1,7 +1,9 @@
 .users-page {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  height: 100svh;
   min-height: 100svh;
+  overflow: hidden;
   background:
     radial-gradient(circle at 70% 0%, rgba(255, 255, 255, 0.055), transparent 34%),
     #080808;
@@ -11,13 +13,17 @@
 .admin-sidebar {
   position: sticky;
   top: 0;
+  box-sizing: border-box;
   display: flex;
   height: 100svh;
+  min-height: 100svh;
+  max-height: 100svh;
   flex-direction: column;
   border-right: 1px solid #242424;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 32%),
     #0b0b0b;
+  overflow: hidden;
   padding: 22px 16px;
 }
 
@@ -87,6 +93,9 @@
 .admin-nav {
   display: grid;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 14px;
 }
 
 .admin-nav p {
@@ -133,8 +142,10 @@
 
 .sidebar-bottom-stack {
   display: grid;
+  flex-shrink: 0;
   gap: 12px;
   margin-top: auto;
+  padding-top: 18px;
 }
 
 .sidebar-tone-button {
@@ -260,10 +271,14 @@
 
 .sidebar-bottom-stack + .sidebar-back {
   margin-top: 12px;
+  flex-shrink: 0;
 }
 
 .users-workspace {
+  height: 100svh;
   min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 28px 28px 24px;
 }
 

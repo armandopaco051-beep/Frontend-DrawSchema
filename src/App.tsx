@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import LoginPage from './LoginPage'
 import { EstudiantePage } from './pages/estudiante/EstudiantePage'
+import { IAPage } from './pages/IA/IA'
 import { PerfilPage } from './pages/perfil/PerfilPage'
 import { UsuariosPage } from './pages/usuario/UsuariosPage'
 import type { AuthUserProfile } from './utils/auth'
@@ -113,12 +114,12 @@ const activityMessages = [
   'Jose comento tasks.status',
   'Mia exporto el SQL',
 ]
-
+  
 function App() {
   const [activeTable, setActiveTable] = useState(1)
   const [activityIndex, setActivityIndex] = useState(0)
-  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'usuarios' | 'proyectos' | 'perfil' | 'estudiante'>('landing')
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'usuarios' | 'proyectos' | 'perfil' | 'estudiante' | 'ia'>('landing')
+  const [theme, setTheme] = useState<'dark' | 'light'>('light')
   const [authToken, setAuthToken] = useState<string | null>(() => getStoredToken())
   const [profileOverride, setProfileOverride] = useState<AuthUserProfile | null>(null)
   const userProfile = profileOverride ?? getUserProfileFromToken(authToken)
@@ -210,6 +211,10 @@ function App() {
         onUsers={() => setCurrentPage('usuarios')}
       />
     )
+  }
+
+  if (currentPage === 'ia') {
+    return <IAPage theme={theme} userProfile={userProfile} />
   }
 
   return (

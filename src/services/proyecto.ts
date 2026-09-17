@@ -1,6 +1,7 @@
 import type {
   Proyecto,
   ProyectoCreate,
+  MiembroFormValues,
   ProyectoMiembro,
   ProyectoUpdate,
 } from '../models/proyecto'
@@ -38,11 +39,21 @@ export function eliminarProyecto(id: number) {
   })
 }
 
-export function agregarMiembro(proyectoId: number, miembro: ProyectoMiembro) {
-  return apiRequest<ProyectoMiembro, ProyectoMiembro>(
+export function agregarMiembro(proyectoId: number, miembro: MiembroFormValues) {
+  return apiRequest<ProyectoMiembro, MiembroFormValues>(
     `/proyectos/${proyectoId}/miembros`,
     {
       method: 'POST',
+      body: miembro,
+    },
+  )
+}
+
+export function actualizarMiembro(proyectoId: number, usuarioCodigo: string, miembro: Pick<ProyectoMiembro, 'id_rol'>) {
+  return apiRequest<ProyectoMiembro, Pick<ProyectoMiembro, 'id_rol'>>(
+    `/proyectos/${proyectoId}/miembros/${usuarioCodigo}`,
+    {
+      method: 'PUT',
       body: miembro,
     },
   )

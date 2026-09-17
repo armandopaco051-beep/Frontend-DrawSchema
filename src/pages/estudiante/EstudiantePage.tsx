@@ -1,20 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEdge,
-  Background,
-  Controls,
-  Handle,
-  MiniMap,
-  Position,
-  ReactFlow,
   useEdgesState,
   useNodesState,
 } from '@xyflow/react'
 import type {
   Connection,
-  Edge,
-  Node,
-  NodeProps,
   OnConnect,
   OnNodeDrag,
 } from '@xyflow/react'
@@ -25,28 +16,62 @@ import {
   FileCode2,
   FolderKanban,
   LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
   Save,
   Trash2,
 } from 'lucide-react'
 import { AdminSidebarExtras } from '../../components/admin/AdminSidebarExtras'
-import type { Proyecto } from '../../models/proyecto'
+import { ClassFeaturesPanel } from '../../features/diagramador/components/ClassFeaturesPanel'
+import { CreateClassPanel } from '../../features/diagramador/components/CreateClassPanel'
+import { DiagramAssistantPanel } from '../../features/diagramador/components/DiagramAssistantPanel'
+import { DiagramCanvas } from '../../features/diagramador/components/DiagramCanvas'
+import { DiagramListPanel } from '../../features/diagramador/components/DiagramListPanel'
+import { RelationBuilderPanel, RelationsPanel } from '../../features/diagramador/components/RelationsPanel'
+import { useDiagramStore } from '../../features/diagrams/store/diagram.store'
+import type {
+  Cardinality,
+  ClassAttribute,
+  ClassFlowEdge,
+  ClassFlowNode,
+  ClassMethod,
+  ClassNodeData,
+  RelationType,
+  UmlRelationData,
+} from '../../features/diagrams/types/relation.types'
+import {
+  getRelationEdgeProps,
+  normalizeCardinality,
+  normalizeRelationType,
+} from '../../features/diagrams/utils/relation-markers'
+import { createDiagramEvent, validateRelation } from '../../features/diagrams/utils/relation-validation'
+import type { Proyecto, ProyectoMiembro } from '../../models/proyecto'
+import { ApiError } from '../../services/api'
 import type { DiagramContent, DiagramEdge, DiagramNode, DiagramaResponse } from '../../services/diagramaService'
 import {
   abrirDiagrama,
   agregarClase,
   crearDiagrama,
-  editarClase,
   eliminarDiagrama,
   guardarDiagrama,
   listarDiagramasPorProyecto,
   moverClase,
 } from '../../services/diagramaService'
-import { crearProyecto, listarProyectosPorUsuario } from '../../services/proyecto'
+import {
+  actualizarMiembro,
+  agregarMiembro,
+  crearProyecto,
+  listarMiembros,
+  listarProyectosPorUsuario,
+  quitarMiembro,
+} from '../../services/proyecto'
+import { listarUsuarios } from '../../services/usuarioService'
 import type { AuthUserProfile } from '../../utils/auth'
 import '@xyflow/react/dist/style.css'
 import '../usuario/UsuariosPage.css'
+import '../IA/ia.css'
 import './EstudiantePage.css'
 
 type EstudiantePageProps = {
@@ -58,40 +83,30 @@ type EstudiantePageProps = {
 }
 
 type StudentView = 'projects' | 'diagrammer'
+type FeatureTab = 'attributes' | 'methods'
 
-type ClassAttribute = {
-  name?: string
-  type?: string
-  primaryKey?: boolean
-  nullable?: boolean
-  [key: string]: unknown
-}
-
-type ClassMethod = {
-  name?: string
-  returnType?: string
-  parameters?: Record<string, unknown>[]
-  [key: string]: unknown
-}
-
-type ClassNodeData = {
-  name: string
-  attributes: ClassAttribute[]
-  methods: ClassMethod[]
-  [key: string]: unknown
-}
-
-type ClassFlowNode = Node<ClassNodeData, 'classNode'>
-type ClassFlowEdge = Edge<Record<string, unknown>>
+const memberRoleOptions = [
+  {
+    id: 2,
+    label: 'Propietario',
+  },
+  {
+    id: 3,
+    label: 'Editor',
+  },
+  {
+    id: 4,
+    label: 'Visualizador',
+  },
+]
 
 const emptyContent: DiagramContent = {
   nodes: [],
   edges: [],
 }
 
-const nodeTypes = {
-  classNode: ClassNode,
-}
+const standardClassWidth = 245
+const standardClassHeight = 180
 
 function formatDate(value?: string | null) {
   if (!value) {
@@ -105,6 +120,59 @@ function formatDate(value?: string | null) {
   })
 }
 
+function getMemberRoleName(roleId: number) {
+  return memberRoleOptions.find((role) => role.id === roleId)?.label ?? 'Sin rol'
+}
+
+function normalizeMethodParameters(parameters: unknown) {
+  if (!Array.isArray(parameters)) {
+    return []
+  }
+
+  return parameters
+    .map((parameter) => {
+      if (typeof parameter === 'string') {
+        return parameter.trim()
+      }
+
+      if (parameter && typeof parameter === 'object') {
+        const value = parameter as Record<string, unknown>
+        return String(value.name ?? value.nombre ?? value.parameter ?? '').trim()
+      }
+
+      return ''
+    })
+    .filter(Boolean)
+}
+
+function parseMethodParameters(value: string) {
+  return value
+    .split(',')
+    .map((parameter) => parameter.trim())
+    .filter(Boolean)
+    .map((name) => ({ name }))
+}
+
+function formatMethodParameters(parameters: unknown) {
+  return normalizeMethodParameters(parameters).join(', ')
+}
+
+function getCollaboratorError(error: unknown, fallback: string) {
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permiso para gestionar colaboradores'
+  }
+
+  return error instanceof Error ? error.message : fallback
+}
+
+function getProjectActionError(error: unknown, fallback: string) {
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permiso para editar este proyecto.'
+  }
+
+  return error instanceof Error ? error.message : fallback
+}
+
 function normalizeContent(content?: DiagramContent | null) {
   return content ?? emptyContent
 }
@@ -114,7 +182,13 @@ function toFlowNodes(nodes: DiagramNode[]): ClassFlowNode[] {
     id: node.id,
     type: 'classNode',
     position: node.position,
+    style: {
+      ...node.style,
+      width: Math.max(Number(node.style?.width ?? standardClassWidth), standardClassWidth),
+      height: Math.max(Number(node.style?.height ?? standardClassHeight), standardClassHeight),
+    },
     data: {
+      ...node.data,
       name: node.data.name,
       attributes: node.data.attributes as ClassAttribute[],
       methods: node.data.methods as ClassMethod[],
@@ -123,13 +197,26 @@ function toFlowNodes(nodes: DiagramNode[]): ClassFlowNode[] {
 }
 
 function toFlowEdges(edges: DiagramEdge[]): ClassFlowEdge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    type: edge.type ?? 'smoothstep',
-    data: edge.data ?? {},
-  }))
+  return edges.map((edge) => {
+    const relationType = normalizeRelationType(edge.data?.relationType)
+
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      data: {
+        ...edge.data,
+        id: edge.id,
+        sourceClassId: edge.source,
+        targetClassId: edge.target,
+        relationType,
+        sourceCardinality: normalizeCardinality(edge.data?.sourceCardinality),
+        targetCardinality: normalizeCardinality(edge.data?.targetCardinality),
+        createdAt: String(edge.data?.createdAt ?? new Date().toISOString()),
+      },
+      ...getRelationEdgeProps(relationType),
+    }
+  })
 }
 
 function toDiagramContent(nodes: ClassFlowNode[], edges: ClassFlowEdge[]): DiagramContent {
@@ -138,55 +225,154 @@ function toDiagramContent(nodes: ClassFlowNode[], edges: ClassFlowEdge[]): Diagr
       id: node.id,
       type: 'classNode',
       position: node.position,
+      style: {
+        width: Math.max(Number(node.style?.width ?? node.width ?? standardClassWidth), standardClassWidth),
+        height: Math.max(Number(node.style?.height ?? node.height ?? standardClassHeight), standardClassHeight),
+      },
       data: {
+        ...node.data,
         name: node.data.name,
         attributes: node.data.attributes,
         methods: node.data.methods,
       },
     })),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: edge.type,
-      data: edge.data,
-    })),
+    edges: edges.map((edge) => {
+      const currentData = getEdgeData(edge)
+      const { cardinality: _legacyCardinality, ...relationData } = currentData
+
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: 'umlRelation',
+        data: {
+          ...relationData,
+          sourceClassId: edge.source,
+          targetClassId: edge.target,
+          sourceCardinality: normalizeCardinality(currentData.sourceCardinality),
+          targetCardinality: normalizeCardinality(currentData.targetCardinality),
+        },
+      }
+    }),
   }
 }
 
-function ClassNode({ data, selected }: NodeProps<ClassFlowNode>) {
-  return (
-    <article className={selected ? 'flow-class-node selected' : 'flow-class-node'}>
-      <Handle className="flow-handle" position={Position.Left} type="target" />
-      <header>
-        <strong>{data.name}</strong>
-      </header>
-      <div>
-        {data.attributes.length > 0 ? (
-          data.attributes.map((attribute, index) => (
-            <p key={`${String(attribute.name)}-${index}`}>
-              {attribute.primaryKey ? '# ' : '+ '}
-              {String(attribute.name ?? 'atributo')}: {String(attribute.type ?? 'TEXT')}
-            </p>
-          ))
-        ) : (
-          <p className="muted-line">Sin atributos</p>
-        )}
-      </div>
-      <footer>
-        {data.methods.length > 0 ? (
-          data.methods.map((method, index) => (
-            <p key={`${String(method.name)}-${index}`}>
-              {String(method.name ?? 'metodo')}(): {String(method.returnType ?? 'void')}
-            </p>
-          ))
-        ) : (
-          <p className="muted-line">Sin metodos</p>
-        )}
-      </footer>
-      <Handle className="flow-handle" position={Position.Right} type="source" />
-    </article>
-  )
+function getEdgeData(edge: ClassFlowEdge): UmlRelationData {
+  const relationType = normalizeRelationType(edge.data?.relationType)
+
+  return {
+    ...edge.data,
+    id: edge.data?.id ?? edge.id,
+    sourceClassId: edge.data?.sourceClassId ?? edge.source,
+    targetClassId: edge.data?.targetClassId ?? edge.target,
+    relationType,
+    sourceCardinality: normalizeCardinality(edge.data?.sourceCardinality),
+    targetCardinality: normalizeCardinality(edge.data?.targetCardinality),
+    createdAt: edge.data?.createdAt ?? new Date().toISOString(),
+  }
+}
+
+function getAssociationClassName(sourceName: string, targetName: string) {
+  return `${sourceName}${targetName}`
+    .replace(/[^a-zA-Z0-9]/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+}
+
+function createAssociationClassNode(
+  relationId: string,
+  sourceClassId: string,
+  targetClassId: string,
+  currentNodes: ClassFlowNode[],
+): ClassFlowNode | null {
+  const source = currentNodes.find((node) => node.id === sourceClassId)
+  const target = currentNodes.find((node) => node.id === targetClassId)
+
+  if (!source || !target) {
+    return null
+  }
+
+  const associationClassId = `assoc-class-${relationId}`
+  const sourceName = source.data.name || 'Origen'
+  const targetName = target.data.name || 'Destino'
+
+  return {
+    id: associationClassId,
+    type: 'classNode',
+    position: {
+      x: (source.position.x + target.position.x) / 2,
+      y: Math.min(source.position.y, target.position.y) - 170,
+    },
+    data: {
+      name: getAssociationClassName(sourceName, targetName) || 'AssociationClass',
+      attributes: [],
+      methods: [],
+    },
+  }
+}
+
+function buildRelationData({
+  associationClassId,
+  createdAt,
+  createdBy,
+  relationId,
+  relationType,
+  sourceClassId,
+  sourceCardinality = '1..*',
+  targetClassId,
+  targetCardinality = '1',
+}: {
+  associationClassId?: string
+  createdAt?: string
+  createdBy?: string
+  relationId: string
+  relationType: RelationType
+  sourceClassId: string
+  sourceCardinality?: Cardinality
+  targetClassId: string
+  targetCardinality?: Cardinality
+}): UmlRelationData {
+  const semanticData =
+    relationType === 'generalization'
+      ? {
+          childClassId: sourceClassId,
+          parentClassId: targetClassId,
+        }
+      : relationType === 'composition' || relationType === 'aggregation'
+        ? {
+            wholeClassId: sourceClassId,
+            partClassId: targetClassId,
+          }
+        : {}
+
+  return {
+    id: relationId,
+    sourceClassId,
+    targetClassId,
+    relationType,
+    sourceCardinality,
+    targetCardinality,
+    associationClassId,
+    createdBy,
+    createdAt: createdAt ?? new Date().toISOString(),
+    ...semanticData,
+  }
+}
+
+function getRecursiveHandles(sourceHandle?: string | null, targetHandle?: string | null) {
+  if (sourceHandle && targetHandle && sourceHandle !== targetHandle) {
+    return {
+      sourceHandle,
+      targetHandle,
+    }
+  }
+
+  return {
+    sourceHandle: 'right',
+    targetHandle: 'top',
+  }
 }
 
 export function EstudiantePage({
@@ -201,27 +387,75 @@ export function EstudiantePage({
   const [diagramas, setDiagramas] = useState<DiagramaResponse[]>([])
   const [selectedProyecto, setSelectedProyecto] = useState<Proyecto | null>(null)
   const [selectedDiagrama, setSelectedDiagrama] = useState<DiagramaResponse | null>(null)
+  const [miembros, setMiembros] = useState<ProyectoMiembro[]>([])
+  const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, number>>({})
+  const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [newMemberRole, setNewMemberRole] = useState(3)
   const [nodes, setNodes, onNodesChange] = useNodesState<ClassFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<ClassFlowEdge>([])
   const [selectedNodeId, setSelectedNodeId] = useState('')
+  const [selectedEdgeId, setSelectedEdgeId] = useState('')
   const [diagramName, setDiagramName] = useState('')
   const [newDiagramName, setNewDiagramName] = useState('Diagrama principal')
   const [newClassName, setNewClassName] = useState('Cliente')
   const [newAttributeName, setNewAttributeName] = useState('id')
   const [newAttributeType, setNewAttributeType] = useState('BIGINT')
   const [newMethodName, setNewMethodName] = useState('registrar')
+  const [newMethodParameters, setNewMethodParameters] = useState('')
   const [newMethodReturnType, setNewMethodReturnType] = useState('void')
   const [newProjectName, setNewProjectName] = useState('Mi nuevo proyecto')
   const [newProjectDescription, setNewProjectDescription] = useState('')
+  const [featureTab, setFeatureTab] = useState<FeatureTab>('attributes')
+  const [selectedRelationType, setSelectedRelationType] = useState<RelationType>('association')
+  const [relationSourceId, setRelationSourceId] = useState('')
+  const [relationTargetId, setRelationTargetId] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isMembersLoading, setIsMembersLoading] = useState(false)
+  const [isMembersSaving, setIsMembersSaving] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isCreateClassOpen, setIsCreateClassOpen] = useState(false)
+  const [isRelationToolboxOpen, setIsRelationToolboxOpen] = useState(true)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [membersMessage, setMembersMessage] = useState('')
+  const [membersError, setMembersError] = useState('')
+  const setDiagramState = useDiagramStore((state) => state.setDiagramState)
+  const addStoredRelation = useDiagramStore((state) => state.addRelation)
+  const updateStoredRelation = useDiagramStore((state) => state.updateRelation)
+  const removeStoredRelation = useDiagramStore((state) => state.removeRelation)
+  const setStoredSelectedRelationId = useDiagramStore((state) => state.setSelectedRelationId)
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
     [nodes, selectedNodeId],
   )
+  const miembroActual = useMemo(
+    () => miembros.find((miembro) => miembro.usuario_codigo === userProfile?.codigo) ?? null,
+    [miembros, userProfile?.codigo],
+  )
+  const canEditDiagram = miembroActual?.id_rol === 2 || miembroActual?.id_rol === 3
+  const canManageMembers = miembroActual?.id_rol === 2
+  const canViewOnly = miembroActual?.id_rol === 4
+
+  function denyDiagramEdit() {
+    setError('No tienes permiso para editar este diagrama.')
+  }
+
+  function denyMemberManagement() {
+    setMembersError('No tienes permiso para gestionar colaboradores')
+  }
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setRelationSourceId('')
+      setRelationTargetId('')
+      return
+    }
+
+    setRelationSourceId((current) => current || nodes[0].id)
+    setRelationTargetId((current) => current || nodes[1]?.id || nodes[0].id)
+  }, [nodes])
 
   const loadProyectos = useCallback(async () => {
     if (!userProfile?.codigo) {
@@ -242,9 +476,48 @@ export function EstudiantePage({
     }
   }, [userProfile?.codigo])
 
+  const loadMiembros = useCallback(async (proyectoId: number) => {
+    setIsMembersLoading(true)
+    setMembersError('')
+
+    try {
+      const data = await listarMiembros(proyectoId)
+
+      setMiembros(data)
+      setMemberRoleDrafts(
+        data.reduce<Record<string, number>>((drafts, miembro) => {
+          drafts[miembro.usuario_codigo] = miembro.id_rol
+          return drafts
+        }, {}),
+      )
+    } catch (loadError) {
+      setMembersError(getCollaboratorError(loadError, 'No se pudieron cargar los colaboradores'))
+    } finally {
+      setIsMembersLoading(false)
+    }
+  }, [])
+
+  async function openCollaborators(proyecto: Proyecto) {
+    setSelectedProyecto(proyecto)
+    setSelectedDiagrama(null)
+    setNodes([])
+    setEdges([])
+    setDiagramas([])
+    setSelectedNodeId('')
+    setSelectedEdgeId('')
+    setStoredSelectedRelationId('')
+    setMembersMessage('')
+    setMembersError('')
+    await loadMiembros(proyecto.id)
+  }
+
   async function openProyecto(proyecto: Proyecto) {
     setSelectedProyecto(proyecto)
     setSelectedDiagrama(null)
+    setMiembros([])
+    setMemberRoleDrafts({})
+    setNewMemberEmail('')
+    setNewMemberRole(3)
     setNodes([])
     setEdges([])
     setDiagramas([])
@@ -252,9 +525,14 @@ export function EstudiantePage({
     setView('diagrammer')
     setMessage('')
     setError('')
+    setMembersMessage('')
+    setMembersError('')
 
     try {
-      const data = await listarDiagramasPorProyecto(proyecto.id)
+      const [data] = await Promise.all([
+        listarDiagramasPorProyecto(proyecto.id),
+        loadMiembros(proyecto.id),
+      ])
       setDiagramas(data)
 
       if (data.length > 0) {
@@ -262,6 +540,122 @@ export function EstudiantePage({
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los diagramas')
+    }
+  }
+
+  async function addMiembro() {
+    const usuarioEmail = newMemberEmail.trim().toLowerCase()
+
+    if (!selectedProyecto) {
+      setMembersError('Abre un proyecto antes de agregar colaboradores.')
+      return
+    }
+
+    if (!canManageMembers) {
+      denyMemberManagement()
+      return
+    }
+
+    if (!usuarioEmail) {
+      setMembersError('Escribe el correo electronico del usuario.')
+      return
+    }
+
+    if (!usuarioEmail.includes('@')) {
+      setMembersError('Escribe un correo electronico valido.')
+      return
+    }
+
+    setIsMembersSaving(true)
+    setMembersError('')
+    setMembersMessage('')
+
+    try {
+      const usuarios = await listarUsuarios()
+      const usuario = usuarios.find((item) => item.email.trim().toLowerCase() === usuarioEmail)
+
+      if (!usuario) {
+        setMembersError('No se encontro un usuario registrado con ese correo.')
+        return
+      }
+
+      await agregarMiembro(selectedProyecto.id, {
+        usuario_codigo: usuario.codigo,
+        id_rol: newMemberRole,
+      })
+      setNewMemberEmail('')
+      setNewMemberRole(3)
+      setMembersMessage('Colaborador agregado.')
+      await loadMiembros(selectedProyecto.id)
+    } catch (memberError) {
+      setMembersError(getCollaboratorError(memberError, 'No se pudo agregar el colaborador'))
+    } finally {
+      setIsMembersSaving(false)
+    }
+  }
+
+  async function saveMemberRole(miembro: ProyectoMiembro) {
+    if (!selectedProyecto) {
+      return
+    }
+
+    if (!canManageMembers) {
+      denyMemberManagement()
+      return
+    }
+
+    const nextRole = memberRoleDrafts[miembro.usuario_codigo]
+
+    if (!nextRole) {
+      setMembersError('Selecciona un rol valido.')
+      return
+    }
+
+    setIsMembersSaving(true)
+    setMembersError('')
+    setMembersMessage('')
+
+    try {
+      await actualizarMiembro(selectedProyecto.id, miembro.usuario_codigo, {
+        id_rol: nextRole,
+      })
+      setMembersMessage('Rol actualizado.')
+      await loadMiembros(selectedProyecto.id)
+    } catch (memberError) {
+      setMembersError(getCollaboratorError(memberError, 'No se pudo actualizar el rol'))
+    } finally {
+      setIsMembersSaving(false)
+    }
+  }
+
+  async function removeMiembro(miembro: ProyectoMiembro) {
+    if (!selectedProyecto) {
+      return
+    }
+
+    if (!canManageMembers) {
+      denyMemberManagement()
+      return
+    }
+
+    const confirmed = window.confirm(`Quitar al colaborador ${miembro.usuario_codigo} de este proyecto?`)
+
+    if (!confirmed) {
+      return
+    }
+
+    setIsMembersSaving(true)
+    setMembersError('')
+    setMembersMessage('')
+
+    try {
+      await quitarMiembro(selectedProyecto.id, miembro.usuario_codigo)
+      setMembersMessage('Colaborador quitado.')
+      await loadMiembros(selectedProyecto.id)
+    } catch (memberError) {
+      setMembersError(getCollaboratorError(memberError, 'No se pudo quitar el colaborador'))
+    } finally {
+      setIsMembersSaving(false)
     }
   }
 
@@ -275,12 +669,37 @@ export function EstudiantePage({
 
       setSelectedDiagrama(diagrama)
       setDiagramName(diagrama.nombre)
-      setNodes(toFlowNodes(content.nodes))
-      setEdges(toFlowEdges(content.edges))
+      const nextNodes = toFlowNodes(content.nodes)
+      const nextEdges = toFlowEdges(content.edges)
+
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      setDiagramState(nextNodes, nextEdges)
       setSelectedNodeId('')
+      setSelectedEdgeId('')
+      setStoredSelectedRelationId('')
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudo abrir el diagrama')
     }
+  }
+
+  function handleAiDiagramUpdated(diagrama: DiagramaResponse) {
+    const content = normalizeContent(diagrama.contenido)
+    const nextNodes = toFlowNodes(content.nodes)
+    const nextEdges = toFlowEdges(content.edges)
+
+    setSelectedDiagrama(diagrama)
+    setDiagramName(diagrama.nombre)
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    setDiagramas((current) =>
+      current.map((currentDiagrama) => (currentDiagrama.id === diagrama.id ? diagrama : currentDiagrama)),
+    )
+    setSelectedNodeId('')
+    setSelectedEdgeId('')
+    setStoredSelectedRelationId('')
+    setMessage('El agente IA actualizo el diagrama.')
   }
 
   async function createProyecto() {
@@ -319,6 +738,11 @@ export function EstudiantePage({
       return
     }
 
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
     setIsSaving(true)
     setError('')
     setMessage('')
@@ -335,7 +759,7 @@ export function EstudiantePage({
       await openDiagrama(diagrama.id)
       setMessage('Diagrama creado correctamente.')
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No se pudo crear el diagrama')
+      setError(getProjectActionError(saveError, 'No se pudo crear el diagrama'))
     } finally {
       setIsSaving(false)
     }
@@ -344,6 +768,11 @@ export function EstudiantePage({
   async function addClass() {
     if (!selectedDiagrama) {
       setError('Crea o abre un diagrama antes de agregar clases.')
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
       return
     }
 
@@ -372,16 +801,20 @@ export function EstudiantePage({
       })
 
       const content = normalizeContent(diagrama.contenido)
+      const nextNodes = toFlowNodes(content.nodes)
+      const nextEdges = toFlowEdges(content.edges)
 
       setSelectedDiagrama(diagrama)
-      setNodes(toFlowNodes(content.nodes))
-      setEdges(toFlowEdges(content.edges))
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      setDiagramState(nextNodes, nextEdges)
       setNewClassName('Cliente')
       setNewAttributeName('id')
       setNewAttributeType('BIGINT')
+      setIsCreateClassOpen(false)
       setMessage('Clase agregada al diagrama.')
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No se pudo agregar la clase')
+      setError(getProjectActionError(saveError, 'No se pudo agregar la clase'))
     } finally {
       setIsSaving(false)
     }
@@ -392,32 +825,31 @@ export function EstudiantePage({
       return
     }
 
-    setIsSaving(true)
-    setError('')
-    setMessage('')
-
-    try {
-      const diagrama = await editarClase(selectedDiagrama.id, selectedNode.id, {
-        name: nextData.name,
-        attributes: nextData.attributes,
-        methods: nextData.methods,
-        autor_codigo: userProfile?.codigo,
-      })
-      const content = normalizeContent(diagrama.contenido)
-
-      setSelectedDiagrama(diagrama)
-      setNodes(toFlowNodes(content.nodes))
-      setEdges(toFlowEdges(content.edges))
-      setMessage('Clase actualizada.')
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No se pudo actualizar la clase')
-    } finally {
-      setIsSaving(false)
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
     }
+
+    const nextNodes = nodes.map((node) =>
+      node.id === selectedNode.id
+        ? {
+            ...node,
+            data: nextData,
+          }
+        : node,
+    )
+
+    await saveDiagrama(nextNodes, edges)
+    setSelectedNodeId(selectedNode.id)
   }
 
   async function saveDiagrama(nextNodes = nodes, nextEdges = edges) {
     if (!selectedDiagrama) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
       return
     }
 
@@ -432,39 +864,613 @@ export function EstudiantePage({
         autor_codigo: userProfile?.codigo,
       })
       const content = normalizeContent(diagrama.contenido)
+      const persistedNodes = toFlowNodes(content.nodes)
+      const persistedEdges = toFlowEdges(content.edges)
 
       setSelectedDiagrama(diagrama)
-      setNodes(toFlowNodes(content.nodes))
-      setEdges(toFlowEdges(content.edges))
+      setNodes(persistedNodes)
+      setEdges(persistedEdges)
+      setDiagramState(persistedNodes, persistedEdges)
       setDiagramas((current) => current.map((item) => (item.id === diagrama.id ? diagrama : item)))
       setMessage('Diagrama guardado correctamente.')
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el diagrama')
+      setError(getProjectActionError(saveError, 'No se pudo guardar el diagrama'))
     } finally {
       setIsSaving(false)
     }
   }
 
   const connectNodes: OnConnect = async (connection: Connection) => {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    if (!connection.source || !connection.target) {
+      setError('Selecciona una clase origen y una clase destino para crear la relacion.')
+      return
+    }
+
+    const isRecursiveRelation = connection.source === connection.target
+    const recursiveHandles = isRecursiveRelation
+      ? getRecursiveHandles(connection.sourceHandle, connection.targetHandle)
+      : {
+          sourceHandle: connection.sourceHandle,
+          targetHandle: connection.targetHandle,
+        }
+    const relationId = `rel-${connection.source}-${connection.target}-${Date.now()}`
+    const validation = validateRelation(
+      {
+        id: relationId,
+        sourceClassId: connection.source,
+        targetClassId: connection.target,
+        sourceHandle: recursiveHandles.sourceHandle,
+        targetHandle: recursiveHandles.targetHandle,
+        relationType: selectedRelationType,
+        sourceCardinality: '1..*',
+        targetCardinality: '1',
+        createdBy: userProfile?.codigo,
+      },
+      nodes,
+      edges,
+    )
+
+    if (!validation.valid) {
+      setError(validation.message ?? 'La relacion no es valida.')
+      return
+    }
+
+    const associationClassNode =
+      selectedRelationType === 'associationClass'
+        ? createAssociationClassNode(relationId, connection.source, connection.target, nodes)
+        : null
+    const nextNodes = associationClassNode ? [...nodes, associationClassNode] : nodes
+
     const nextEdges = addEdge(
       {
         ...connection,
-        id: `rel-${connection.source}-${connection.target}-${Date.now()}`,
-        type: 'smoothstep',
-        data: {
-          relationType: 'association',
-          cardinality: '1:N',
-        },
+        sourceHandle: recursiveHandles.sourceHandle,
+        targetHandle: recursiveHandles.targetHandle,
+        id: relationId,
+        data: buildRelationData({
+          associationClassId: associationClassNode?.id,
+          createdBy: userProfile?.codigo,
+          relationId,
+          relationType: selectedRelationType,
+          sourceClassId: connection.source,
+          sourceCardinality: '1..*',
+          targetClassId: connection.target,
+          targetCardinality: '1',
+        }),
+        ...getRelationEdgeProps(selectedRelationType),
       },
       edges,
     )
 
+    setNodes(nextNodes)
     setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    setSelectedEdgeId(nextEdges.at(-1)?.id ?? '')
+    setStoredSelectedRelationId(nextEdges.at(-1)?.id ?? '')
+    addStoredRelation(nextEdges.at(-1) as ClassFlowEdge, createDiagramEvent('RELATION_CREATED', relationId, userProfile?.codigo))
+    setMessage(
+      selectedRelationType === 'associationClass'
+        ? 'Relacion creada con clase intermedia.'
+        : 'Relacion creada y guardada.',
+    )
+    await saveDiagrama(nextNodes, nextEdges)
+  }
+
+  async function createRelationFromPanel() {
+    if (!selectedDiagrama) {
+      setError('Abre un diagrama antes de crear relaciones.')
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    if (!relationSourceId || !relationTargetId) {
+      setError('Selecciona una clase origen y una clase destino.')
+      return
+    }
+
+    const isRecursiveRelation = relationSourceId === relationTargetId
+    const recursiveHandles = isRecursiveRelation
+      ? getRecursiveHandles()
+      : {
+          sourceHandle: undefined,
+          targetHandle: undefined,
+        }
+    const relationId = `rel-${relationSourceId}-${relationTargetId}-${Date.now()}`
+    const validation = validateRelation(
+      {
+        id: relationId,
+        sourceClassId: relationSourceId,
+        targetClassId: relationTargetId,
+        relationType: selectedRelationType,
+        sourceCardinality: '1..*',
+        targetCardinality: '1',
+        createdBy: userProfile?.codigo,
+      },
+      nodes,
+      edges,
+    )
+
+    if (!validation.valid) {
+      setError(validation.message ?? 'La relacion no es valida.')
+      return
+    }
+
+    const associationClassNode =
+      selectedRelationType === 'associationClass'
+        ? createAssociationClassNode(relationId, relationSourceId, relationTargetId, nodes)
+        : null
+    const nextNodes = associationClassNode ? [...nodes, associationClassNode] : nodes
+
+    const nextEdge: ClassFlowEdge = {
+      id: relationId,
+      source: relationSourceId,
+      target: relationTargetId,
+      sourceHandle: recursiveHandles.sourceHandle,
+      targetHandle: recursiveHandles.targetHandle,
+      data: buildRelationData({
+        associationClassId: associationClassNode?.id,
+        createdBy: userProfile?.codigo,
+        relationId,
+        relationType: selectedRelationType,
+        sourceClassId: relationSourceId,
+        sourceCardinality: '1..*',
+        targetClassId: relationTargetId,
+        targetCardinality: '1',
+      }),
+      ...getRelationEdgeProps(selectedRelationType),
+    }
+
+    const nextEdges = [...edges, nextEdge]
+
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    setSelectedEdgeId(nextEdge.id)
+    setStoredSelectedRelationId(nextEdge.id)
+    addStoredRelation(nextEdge, createDiagramEvent('RELATION_CREATED', nextEdge.id, userProfile?.codigo))
+    setSelectedNodeId('')
+    setMessage(
+      selectedRelationType === 'associationClass'
+        ? 'Relacion creada con clase intermedia.'
+        : 'Relacion creada y guardada.',
+    )
+    await saveDiagrama(nextNodes, nextEdges)
+  }
+
+  function updateSelectedClassDraft(nextData: ClassNodeData) {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              data: nextData,
+            }
+          : node,
+      ),
+    )
+  }
+
+  async function removeSelectedClass() {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    const relatedEdges = edges.filter(
+      (edge) =>
+        edge.source === selectedNode.id ||
+        edge.target === selectedNode.id ||
+        edge.data?.associationClassId === selectedNode.id,
+    )
+    const associationClassIdsToRemove = new Set(
+      relatedEdges
+        .map((edge) => edge.data?.associationClassId)
+        .filter((associationClassId): associationClassId is string => typeof associationClassId === 'string'),
+    )
+    const nextNodes = nodes.filter(
+      (node) => node.id !== selectedNode.id && !associationClassIdsToRemove.has(node.id),
+    )
+    const nextEdges = edges.filter(
+      (edge) =>
+        edge.source !== selectedNode.id &&
+        edge.target !== selectedNode.id &&
+        edge.data?.associationClassId !== selectedNode.id,
+    )
+
+    setSelectedNodeId('')
+    setSelectedEdgeId('')
+    setStoredSelectedRelationId('')
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    await saveDiagrama(nextNodes, nextEdges)
+  }
+
+  const removeSelectedClassRef = useRef(removeSelectedClass)
+
+  useEffect(() => {
+    removeSelectedClassRef.current = removeSelectedClass
+  })
+
+  useEffect(() => {
+    function isWritingInField(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) {
+        return false
+      }
+
+      const tagName = target.tagName.toLowerCase()
+
+      return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable
+    }
+
+    function handleDeleteSelectedClass(event: KeyboardEvent) {
+      if (event.key !== 'Delete' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        return
+      }
+
+      if (!selectedNode || isSaving || isWritingInField(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      void removeSelectedClassRef.current()
+    }
+
+    window.addEventListener('keydown', handleDeleteSelectedClass)
+
+    return () => {
+      window.removeEventListener('keydown', handleDeleteSelectedClass)
+    }
+  }, [isSaving, selectedNode])
+
+  function updateSelectedAttribute(
+    attributeIndex: number,
+    field: 'name' | 'type' | 'primaryKey' | 'nullable',
+    value: string | boolean,
+  ) {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    updateSelectedClassDraft({
+      ...selectedNode.data,
+      attributes: selectedNode.data.attributes.map((attribute, index) =>
+        index === attributeIndex
+          ? {
+              ...attribute,
+              [field]: value,
+            }
+          : attribute,
+      ),
+    })
+  }
+
+  function updateSelectedMethod(methodIndex: number, field: 'name' | 'returnType' | 'parameters', value: string) {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    updateSelectedClassDraft({
+      ...selectedNode.data,
+      methods: selectedNode.data.methods.map((method, index) =>
+        index === methodIndex
+          ? {
+              ...method,
+              [field]: field === 'parameters' ? parseMethodParameters(value) : value,
+            }
+          : method,
+      ),
+    })
+  }
+
+  async function removeAttributeFromSelectedClass(attributeIndex: number) {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    await saveSelectedClass({
+      ...selectedNode.data,
+      attributes: selectedNode.data.attributes.filter((_attribute, index) => index !== attributeIndex),
+    })
+  }
+
+  async function removeMethodFromSelectedClass(methodIndex: number) {
+    if (!selectedNode) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    await saveSelectedClass({
+      ...selectedNode.data,
+      methods: selectedNode.data.methods.filter((_method, index) => index !== methodIndex),
+    })
+  }
+
+  function getClassNameById(nodeId: string) {
+    return nodes.find((node) => node.id === nodeId)?.data.name ?? nodeId
+  }
+
+  async function updateRelation(edgeId: string, relationType: RelationType) {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    const relation = edges.find((edge) => edge.id === edgeId)
+
+    if (!relation) {
+      return
+    }
+
+    let nextNodes = nodes
+    const currentData = getEdgeData(relation)
+    const associationClassNode =
+      relationType === 'associationClass' && !currentData.associationClassId
+        ? createAssociationClassNode(relation.id, relation.source, relation.target, nodes)
+        : null
+    const associationClassId =
+      relationType === 'associationClass'
+        ? currentData.associationClassId ?? associationClassNode?.id
+        : undefined
+    const validation = validateRelation(
+      {
+        id: edgeId,
+        sourceClassId: relation.source,
+        targetClassId: relation.target,
+        relationType,
+        sourceCardinality: currentData.sourceCardinality,
+        targetCardinality: currentData.targetCardinality,
+        associationClassId,
+        createdBy: userProfile?.codigo,
+      },
+      associationClassNode ? [...nodes, associationClassNode] : nodes,
+      edges,
+    )
+
+    if (!validation.valid) {
+      setError(validation.message ?? 'La relacion no es valida.')
+      return
+    }
+
+    const nextEdges: ClassFlowEdge[] = edges.map((edge) => {
+      if (edge.id !== edgeId) {
+        return edge
+      }
+
+      if (associationClassNode) {
+        nextNodes = [...nextNodes, associationClassNode]
+      }
+
+      if (currentData.associationClassId && relationType !== 'associationClass') {
+        nextNodes = nextNodes.filter((node) => node.id !== currentData.associationClassId)
+      }
+
+      const nextData = buildRelationData({
+        associationClassId,
+        createdAt: currentData.createdAt,
+        createdBy: currentData.createdBy ?? userProfile?.codigo,
+        relationId: edge.id,
+        relationType,
+        sourceClassId: edge.source,
+        sourceCardinality: currentData.sourceCardinality,
+        targetClassId: edge.target,
+        targetCardinality: currentData.targetCardinality,
+      })
+
+      return {
+        ...edge,
+        data: nextData,
+        ...getRelationEdgeProps(relationType),
+      }
+    })
+    const updatedRelation = nextEdges.find((edge) => edge.id === edgeId)
+
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    setSelectedEdgeId(edgeId)
+    if (updatedRelation) {
+      updateStoredRelation(
+        edgeId,
+        updatedRelation,
+        createDiagramEvent('RELATION_UPDATED', edgeId, userProfile?.codigo, { relationType }),
+      )
+    }
+    await saveDiagrama(nextNodes, nextEdges)
+  }
+
+  async function updateRelationCardinality(
+    edgeId: string,
+    field: 'sourceCardinality' | 'targetCardinality',
+    value: string,
+  ) {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    const nextEdges: ClassFlowEdge[] = edges.map((edge) => {
+      if (edge.id !== edgeId) {
+        return edge
+      }
+
+      const currentData = getEdgeData(edge)
+      const nextData = {
+        ...currentData,
+        [field]: value as Cardinality,
+      }
+
+      return {
+        ...edge,
+        data: nextData,
+      }
+    })
+    const updatedRelation = nextEdges.find((edge) => edge.id === edgeId)
+
+    setEdges(nextEdges)
+    setSelectedEdgeId(edgeId)
+    if (updatedRelation) {
+      updateStoredRelation(
+        edgeId,
+        updatedRelation,
+        createDiagramEvent('RELATION_UPDATED', edgeId, userProfile?.codigo, { [field]: value }),
+      )
+    }
     await saveDiagrama(nodes, nextEdges)
+  }
+
+  async function invertRelationDirection(edgeId: string) {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    const relation = edges.find((edge) => edge.id === edgeId)
+
+    if (!relation) {
+      return
+    }
+
+    const currentData = getEdgeData(relation)
+    const validation = validateRelation(
+      {
+        id: edgeId,
+        sourceClassId: relation.target,
+        targetClassId: relation.source,
+        relationType: currentData.relationType,
+        sourceCardinality: currentData.targetCardinality,
+        targetCardinality: currentData.sourceCardinality,
+        associationClassId: currentData.associationClassId,
+        templateBindings: currentData.templateBindings,
+        createdBy: userProfile?.codigo,
+      },
+      nodes,
+      edges,
+    )
+
+    if (!validation.valid) {
+      setError(validation.message ?? 'No se puede invertir esta relacion.')
+      return
+    }
+
+    const nextEdges: ClassFlowEdge[] = edges.map((edge) => {
+      if (edge.id !== edgeId) {
+        return edge
+      }
+
+      const nextData = {
+        ...buildRelationData({
+          associationClassId: currentData.associationClassId,
+          createdAt: currentData.createdAt,
+          createdBy: currentData.createdBy ?? userProfile?.codigo,
+          relationId: edge.id,
+          relationType: currentData.relationType,
+          sourceClassId: edge.target,
+          sourceCardinality: currentData.targetCardinality,
+          targetClassId: edge.source,
+          targetCardinality: currentData.sourceCardinality,
+        }),
+        sourceClassId: edge.target,
+        targetClassId: edge.source,
+        sourceRole: currentData.targetRole,
+        targetRole: currentData.sourceRole,
+        navigableSource: currentData.navigableTarget,
+        navigableTarget: currentData.navigableSource,
+        templateBindings: currentData.templateBindings,
+      }
+
+      return {
+        ...edge,
+        source: edge.target,
+        target: edge.source,
+        sourceHandle: edge.targetHandle,
+        targetHandle: edge.sourceHandle,
+        data: nextData,
+      }
+    })
+    const updatedRelation = nextEdges.find((edge) => edge.id === edgeId)
+
+    setEdges(nextEdges)
+    setSelectedEdgeId(edgeId)
+    if (updatedRelation) {
+      updateStoredRelation(
+        edgeId,
+        updatedRelation,
+        createDiagramEvent('RELATION_UPDATED', edgeId, userProfile?.codigo, { direction: 'inverted' }),
+      )
+    }
+    await saveDiagrama(nodes, nextEdges)
+  }
+
+  async function removeRelation(edgeId: string) {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    const relation = edges.find((edge) => edge.id === edgeId)
+    const associationClassId = relation?.data?.associationClassId
+    const nextNodes =
+      typeof associationClassId === 'string' ? nodes.filter((node) => node.id !== associationClassId) : nodes
+    const nextEdges = edges.filter((edge) => edge.id !== edgeId)
+
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setDiagramState(nextNodes, nextEdges)
+    setSelectedEdgeId('')
+    setStoredSelectedRelationId('')
+    removeStoredRelation(edgeId, createDiagramEvent('RELATION_DELETED', edgeId, userProfile?.codigo))
+    await saveDiagrama(nextNodes, nextEdges)
   }
 
   const saveNodePosition: OnNodeDrag<ClassFlowNode> = async (_event, node) => {
     if (!selectedDiagrama) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
       return
     }
 
@@ -475,18 +1481,26 @@ export function EstudiantePage({
         autor_codigo: userProfile?.codigo,
       })
       const content = normalizeContent(diagrama.contenido)
+      const nextNodes = toFlowNodes(content.nodes)
+      const nextEdges = toFlowEdges(content.edges)
 
       setSelectedDiagrama(diagrama)
-      setNodes(toFlowNodes(content.nodes))
-      setEdges(toFlowEdges(content.edges))
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      setDiagramState(nextNodes, nextEdges)
       setDiagramas((current) => current.map((item) => (item.id === diagrama.id ? diagrama : item)))
     } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : 'No se pudo mover la clase')
+      setError(getProjectActionError(moveError, 'No se pudo mover la clase'))
     }
   }
 
   async function addAttributeToSelectedClass() {
     if (!selectedNode || !newAttributeName.trim()) {
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
       return
     }
 
@@ -511,22 +1525,33 @@ export function EstudiantePage({
       return
     }
 
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
     await saveSelectedClass({
       ...selectedNode.data,
       methods: [
         ...selectedNode.data.methods,
         {
           name: newMethodName,
+          parameters: parseMethodParameters(newMethodParameters),
           returnType: newMethodReturnType,
-          parameters: [],
         },
       ],
     })
     setNewMethodName('registrar')
+    setNewMethodParameters('')
     setNewMethodReturnType('void')
   }
 
   async function removeDiagrama(diagrama: DiagramaResponse) {
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
     const confirmed = window.confirm(`Eliminar diagrama "${diagrama.nombre}"?`)
 
     if (!confirmed) {
@@ -545,11 +1570,13 @@ export function EstudiantePage({
         setNodes([])
         setEdges([])
         setSelectedNodeId('')
+        setSelectedEdgeId('')
+        setStoredSelectedRelationId('')
       }
 
       setMessage('Diagrama eliminado correctamente.')
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar el diagrama')
+      setError(getProjectActionError(deleteError, 'No se pudo eliminar el diagrama'))
     }
   }
 
@@ -561,6 +1588,8 @@ export function EstudiantePage({
     setEdges([])
     setDiagramas([])
     setSelectedNodeId('')
+    setSelectedEdgeId('')
+    setStoredSelectedRelationId('')
     setMessage('')
     setError('')
   }
@@ -570,8 +1599,22 @@ export function EstudiantePage({
   }, [loadProyectos])
 
   return (
-    <main className={`users-page student-page ${theme === 'light' ? 'users-page-light' : ''}`}>
-      <aside className="admin-sidebar" aria-label="Navegacion de estudiante">
+    <main
+      className={`users-page student-page ${theme === 'light' ? 'users-page-light' : ''} ${
+        isSidebarCollapsed ? 'student-sidebar-collapsed' : ''
+      }`}
+    >
+      <aside className="admin-sidebar student-sidebar" aria-label="Navegacion de estudiante">
+        <button
+          aria-label={isSidebarCollapsed ? 'Abrir barra lateral' : 'Cerrar barra lateral'}
+          className="student-sidebar-toggle"
+          onClick={() => setIsSidebarCollapsed((current) => !current)}
+          title={isSidebarCollapsed ? 'Abrir barra lateral' : 'Cerrar barra lateral'}
+          type="button"
+        >
+          {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        </button>
+
         <a className="admin-brand" href="#top" onClick={onBack}>
           <span>
             <Database size={20} />
@@ -579,25 +1622,21 @@ export function EstudiantePage({
           <strong>DrawSchema</strong>
         </a>
 
-        <button className="admin-profile" type="button">
-          <span className="admin-avatar">{userProfile?.initials ?? 'ES'}</span>
-          <span>
-            <strong>Student Console</strong>
-            <small>Mis proyectos y diagramas</small>
-          </span>
-          <ChevronDown size={16} />
-        </button>
-
         <nav className="admin-nav">
           <p>Workspace</p>
-          <button className={view === 'projects' ? 'active' : ''} onClick={backToProjects} type="button">
+          <button
+            className={view === 'projects' ? 'active' : ''}
+            onClick={backToProjects}
+            title="Mis proyectos"
+            type="button"
+          >
             <LayoutDashboard size={18} />
-            Mis proyectos
+            <span>Mis proyectos</span>
           </button>
           {selectedProyecto ? (
-            <button className={view === 'diagrammer' ? 'active' : ''} type="button">
+            <button className={view === 'diagrammer' ? 'active' : ''} title="Diagramador" type="button">
               <FileCode2 size={18} />
-              Diagramador
+              <span>Diagramador</span>
             </button>
           ) : null}
         </nav>
@@ -614,7 +1653,7 @@ export function EstudiantePage({
         </button>
       </aside>
 
-      <section className="users-workspace">
+      <section className={view === 'diagrammer' ? 'users-workspace diagrammer-workspace' : 'users-workspace'}>
         {view === 'projects' ? (
           <>
             <header className="users-header">
@@ -673,24 +1712,147 @@ export function EstudiantePage({
 
                 <div className="student-project-grid">
                   {proyectos.map((proyecto) => (
-                    <button
-                      className="student-project-card"
+                    <article
+                      className={selectedProyecto?.id === proyecto.id ? 'student-project-card active' : 'student-project-card'}
                       key={proyecto.id}
-                      onClick={() => openProyecto(proyecto)}
-                      type="button"
                     >
                       <span>
                         <FolderKanban size={20} />
                       </span>
                       <strong>{proyecto.nombre}</strong>
                       <small>{proyecto.descripcion || 'Sin descripcion'}</small>
-                      <em>Abrir diagramador</em>
-                    </button>
+                      <div className="student-project-actions">
+                        <button onClick={() => openProyecto(proyecto)} type="button">
+                          <FileCode2 size={16} /> Abrir
+                        </button>
+                        <button onClick={() => openCollaborators(proyecto)} type="button">
+                          <Plus size={16} /> Colaboradores
+                        </button>
+                      </div>
+                    </article>
                   ))}
                 </div>
 
                 {proyectos.length === 0 && !isLoading ? (
                   <div className="empty-state">Todavia no tienes proyectos. Crea uno para empezar.</div>
+                ) : null}
+
+                {selectedProyecto ? (
+                  <section className="collaborators-panel project-collaborators-panel">
+                    <div className="panel-title compact-title">
+                      <div>
+                        <p>Colaboradores</p>
+                        <h2>{selectedProyecto.nombre}</h2>
+                      </div>
+                      <button
+                        className="icon-button"
+                        disabled={isMembersLoading}
+                        onClick={() => loadMiembros(selectedProyecto.id)}
+                        title="Recargar colaboradores"
+                        type="button"
+                      >
+                        <RefreshCw size={15} />
+                      </button>
+                    </div>
+
+                    {membersError ? <p className="collaborators-message error">{membersError}</p> : null}
+                    {membersMessage ? <p className="collaborators-message success">{membersMessage}</p> : null}
+                    {!canManageMembers ? (
+                      <p className="collaborators-message info">Solo el propietario puede gestionar colaboradores.</p>
+                    ) : null}
+
+                    <div className="collaborator-form project-collaborator-form">
+                      <label>
+                        Correo electronico
+                        <input
+                          disabled={!canManageMembers || isMembersSaving}
+                          onChange={(event) => setNewMemberEmail(event.target.value)}
+                          placeholder="usuario@correo.com"
+                          type="email"
+                          value={newMemberEmail}
+                        />
+                      </label>
+                      <label>
+                        Rol
+                        <select
+                          disabled={!canManageMembers || isMembersSaving}
+                          onChange={(event) => setNewMemberRole(Number(event.target.value))}
+                          value={newMemberRole}
+                        >
+                          {memberRoleOptions.map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        className="primary-action"
+                        disabled={isMembersSaving || !canManageMembers || !newMemberEmail.trim()}
+                        onClick={addMiembro}
+                        type="button"
+                      >
+                        <Plus size={17} /> Agregar colaborador
+                      </button>
+                    </div>
+
+                    <div className="collaborators-list project-collaborators-list">
+                      {isMembersLoading ? <p className="collaborators-loading">Cargando colaboradores...</p> : null}
+                      {!isMembersLoading && miembros.length === 0 ? (
+                        <p className="collaborators-loading">Sin colaboradores registrados.</p>
+                      ) : null}
+
+                      {miembros.map((miembro) => (
+                        <article className="collaborator-card" key={miembro.usuario_codigo}>
+                          <div>
+                            <strong>{miembro.usuario_codigo}</strong>
+                            <span>{getMemberRoleName(miembro.id_rol)}</span>
+                          </div>
+                          <select
+                            aria-label={`Rol de ${miembro.usuario_codigo}`}
+                            disabled={isMembersSaving || !canManageMembers}
+                            onChange={(event) =>
+                              setMemberRoleDrafts((current) => ({
+                                ...current,
+                                [miembro.usuario_codigo]: Number(event.target.value),
+                              }))
+                            }
+                            value={memberRoleDrafts[miembro.usuario_codigo] ?? miembro.id_rol}
+                          >
+                            {memberRoleOptions.map((role) => (
+                              <option key={role.id} value={role.id}>
+                                {role.label}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="collaborator-actions">
+                            <button
+                              className="icon-button"
+                              disabled={
+                                isMembersSaving ||
+                                !canManageMembers ||
+                                memberRoleDrafts[miembro.usuario_codigo] === miembro.id_rol
+                              }
+                              onClick={() => saveMemberRole(miembro)}
+                              title="Guardar rol"
+                              type="button"
+                            >
+                              <Save size={15} />
+                            </button>
+                            <button
+                              className="icon-button danger"
+                              disabled={isMembersSaving || !canManageMembers}
+                              onClick={() => removeMiembro(miembro)}
+                              title="Quitar colaborador"
+                              type="button"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
                 ) : null}
               </div>
             </section>
@@ -705,65 +1867,79 @@ export function EstudiantePage({
                 <p>Diagramador</p>
                 <h1>{selectedProyecto?.nombre ?? 'Proyecto'}</h1>
               </div>
-              <button className="primary-action diagrammer-save" disabled={!selectedDiagrama || isSaving} onClick={() => saveDiagrama()} type="button">
-                <Save size={18} /> {isSaving ? 'Guardando...' : 'Guardar'}
-              </button>
+              <div className="diagrammer-header-actions">
+                {selectedProyecto ? (
+                  <span className={canViewOnly ? 'project-role-badge view-only' : 'project-role-badge'}>
+                    {miembroActual ? getMemberRoleName(miembroActual.id_rol) : 'Cargando rol'}
+                  </span>
+                ) : null}
+                <button
+                  className="primary-action diagrammer-save"
+                  disabled={!selectedDiagrama || isSaving || !canEditDiagram}
+                  onClick={() => saveDiagrama()}
+                  type="button"
+                >
+                  <Save size={18} /> {isSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
             </header>
 
             {error ? <p className="users-message error">{error}</p> : null}
             {message ? <p className="users-message success">{message}</p> : null}
+            {canViewOnly ? (
+              <p className="users-message info">Estas como visualizador: puedes revisar el diagrama, pero no editarlo.</p>
+            ) : null}
 
             <section className="diagrammer-shell">
               <aside className="diagrammer-left-panel">
-                <div className="panel-title">
-                  <div>
-                    <p>Diagramas</p>
-                    <h2>Archivos</h2>
-                  </div>
-                </div>
+                <DiagramListPanel
+                  canEditDiagram={canEditDiagram}
+                  createDiagrama={createDiagrama}
+                  diagramas={diagramas}
+                  formatDate={formatDate}
+                  isSaving={isSaving}
+                  newDiagramName={newDiagramName}
+                  openDiagrama={openDiagrama}
+                  removeDiagrama={removeDiagrama}
+                  selectedDiagrama={selectedDiagrama}
+                  selectedProyecto={selectedProyecto}
+                  setNewDiagramName={setNewDiagramName}
+                />
 
-                <div className="student-create-row">
-                  <input
-                    onChange={(event) => setNewDiagramName(event.target.value)}
-                    placeholder="Nombre del diagrama"
-                    value={newDiagramName}
-                  />
-                  <button className="ghost-button" disabled={isSaving || !selectedProyecto} onClick={createDiagrama} type="button">
-                    <Plus size={18} />
-                  </button>
-                </div>
-
-                <div className="diagram-list">
-                  {diagramas.map((diagrama) => (
-                    <article
-                      className={selectedDiagrama?.id === diagrama.id ? 'diagram-card active' : 'diagram-card'}
-                      key={diagrama.id}
-                    >
-                      <button onClick={() => openDiagrama(diagrama.id)} type="button">
-                        <FileCode2 size={18} />
-                        <span>
-                          <strong>{diagrama.nombre}</strong>
-                          <small>v{diagrama.version} - {formatDate(diagrama.actualizado_en)}</small>
-                        </span>
-                      </button>
-                      <button className="icon-button danger" onClick={() => removeDiagrama(diagrama)} type="button">
-                        <Trash2 size={15} />
-                      </button>
-                    </article>
-                  ))}
-                </div>
-
-                {diagramas.length === 0 ? (
-                  <div className="empty-state compact">Crea un diagrama para empezar.</div>
-                ) : null}
+                <RelationBuilderPanel
+                  canEditDiagram={canEditDiagram}
+                  createRelationFromPanel={createRelationFromPanel}
+                  edges={edges}
+                  getClassNameById={getClassNameById}
+                  invertRelationDirection={invertRelationDirection}
+                  isOpen={isRelationToolboxOpen}
+                  isSaving={isSaving}
+                  nodes={nodes}
+                  onRelationTypeChange={setSelectedRelationType}
+                  onSelectEdge={(edgeId) => {
+                    setSelectedEdgeId(edgeId)
+                    setSelectedNodeId('')
+                  }}
+                  onSourceChange={setRelationSourceId}
+                  onTargetChange={setRelationTargetId}
+                  onToggleOpen={() => setIsRelationToolboxOpen((current) => !current)}
+                  relationSourceId={relationSourceId}
+                  relationTargetId={relationTargetId}
+                  removeRelation={removeRelation}
+                  selectedDiagrama={selectedDiagrama}
+                  selectedEdgeId={selectedEdgeId}
+                  selectedRelationType={selectedRelationType}
+                  updateRelation={updateRelation}
+                  updateRelationCardinality={updateRelationCardinality}
+                />
               </aside>
 
               <section className="diagram-flow-panel">
                 <div className="diagram-canvas-topbar">
                   <label>
                     Nombre
-                    <input
-                      disabled={!selectedDiagrama}
+                      <input
+                      disabled={!selectedDiagrama || !canEditDiagram}
                       onChange={(event) => setDiagramName(event.target.value)}
                       value={diagramName}
                     />
@@ -772,157 +1948,103 @@ export function EstudiantePage({
                     <span>{nodes.length} clases</span>
                     <span>{edges.length} relaciones</span>
                   </div>
-                </div>
-
-                <div className="react-flow-canvas">
-                  <ReactFlow
-                    colorMode={theme}
-                    edges={edges}
-                    fitView
-                    nodeTypes={nodeTypes}
-                    nodes={nodes}
-                    onConnect={connectNodes}
-                    onEdgesChange={onEdgesChange}
-                    onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
-                    onNodeDragStop={saveNodePosition}
-                    onNodesChange={onNodesChange}
+                  <button
+                    aria-expanded={isCreateClassOpen}
+                    className="create-class-toggle canvas-create-class-toggle"
+                    disabled={!selectedDiagrama || !canEditDiagram}
+                    onClick={() => setIsCreateClassOpen((current) => !current)}
+                    type="button"
                   >
-                    <Background gap={28} />
-                    <Controls />
-                    <MiniMap pannable zoomable />
-                  </ReactFlow>
-
-                  {!selectedDiagrama ? (
-                    <div className="flow-empty-overlay">
-                      <FileCode2 size={28} />
-                      <strong>Abre o crea un diagrama</strong>
-                      <span>Luego crea clases y conectalas visualmente.</span>
-                    </div>
-                  ) : null}
+                    <Plus size={18} />
+                    Crear clase
+                    <ChevronDown size={16} />
+                  </button>
                 </div>
+
+                {isCreateClassOpen ? (
+                  <CreateClassPanel
+                    canEditDiagram={canEditDiagram}
+                    isSaving={isSaving}
+                    newAttributeName={newAttributeName}
+                    newAttributeType={newAttributeType}
+                    newClassName={newClassName}
+                    onAddClass={addClass}
+                    onAttributeNameChange={setNewAttributeName}
+                    onAttributeTypeChange={setNewAttributeType}
+                    onClassNameChange={setNewClassName}
+                    selectedDiagrama={selectedDiagrama}
+                    variant="canvas"
+                  />
+                ) : null}
+
+                <DiagramCanvas
+                  canEditDiagram={canEditDiagram}
+                  connectNodes={connectNodes}
+                  edges={edges}
+                  nodes={nodes}
+                  onEdgesChange={onEdgesChange}
+                  onNodesChange={onNodesChange}
+                  saveNodePosition={saveNodePosition}
+                  selectedDiagrama={selectedDiagrama}
+                  selectedEdgeId={selectedEdgeId}
+                  setSelectedEdgeId={setSelectedEdgeId}
+                  setSelectedNodeId={setSelectedNodeId}
+                  setStoredSelectedRelationId={setStoredSelectedRelationId}
+                  theme={theme}
+                />
+
+                {selectedNode ? (
+                  <ClassFeaturesPanel
+                    addAttributeToSelectedClass={addAttributeToSelectedClass}
+                    addMethodToSelectedClass={addMethodToSelectedClass}
+                    canEditDiagram={canEditDiagram}
+                    featureTab={featureTab}
+                    formatMethodParameters={formatMethodParameters}
+                    isSaving={isSaving}
+                    newAttributeName={newAttributeName}
+                    newAttributeType={newAttributeType}
+                    newMethodName={newMethodName}
+                    newMethodParameters={newMethodParameters}
+                    newMethodReturnType={newMethodReturnType}
+                    removeAttributeFromSelectedClass={removeAttributeFromSelectedClass}
+                    removeMethodFromSelectedClass={removeMethodFromSelectedClass}
+                    removeSelectedClass={removeSelectedClass}
+                    saveSelectedClass={saveSelectedClass}
+                    selectedNode={selectedNode}
+                    setFeatureTab={setFeatureTab}
+                    setNewAttributeName={setNewAttributeName}
+                    setNewAttributeType={setNewAttributeType}
+                    setNewMethodName={setNewMethodName}
+                    setNewMethodParameters={setNewMethodParameters}
+                    setNewMethodReturnType={setNewMethodReturnType}
+                    updateSelectedAttribute={updateSelectedAttribute}
+                    updateSelectedClassDraft={updateSelectedClassDraft}
+                    updateSelectedMethod={updateSelectedMethod}
+                  />
+                ) : null}
+
+                <RelationsPanel
+                  canEditDiagram={canEditDiagram}
+                  edges={edges}
+                  getClassNameById={getClassNameById}
+                  invertRelationDirection={invertRelationDirection}
+                  isSaving={isSaving}
+                  removeRelation={removeRelation}
+                  selectedEdgeId={selectedEdgeId}
+                  selectedRelationType={selectedRelationType}
+                  updateRelation={updateRelation}
+                  updateRelationCardinality={updateRelationCardinality}
+                />
               </section>
 
               <aside className="diagrammer-right-panel">
-                <div className="panel-title">
-                  <div>
-                    <p>Clase</p>
-                    <h2>{selectedNode ? 'Editar clase' : 'Crear clase'}</h2>
-                  </div>
-                </div>
-
-                <label>
-                  Nombre de clase
-                  <input
-                    onChange={(event) => setNewClassName(event.target.value)}
-                    placeholder="Cliente"
-                    value={newClassName}
-                  />
-                </label>
-
-                <div className="form-row two-columns">
-                  <label>
-                    Atributo
-                    <input
-                      onChange={(event) => setNewAttributeName(event.target.value)}
-                      placeholder="id"
-                      value={newAttributeName}
-                    />
-                  </label>
-                  <label>
-                    Tipo
-                    <input
-                      onChange={(event) => setNewAttributeType(event.target.value)}
-                      placeholder="BIGINT"
-                      value={newAttributeType}
-                    />
-                  </label>
-                </div>
-
-                <button className="primary-action" disabled={!selectedDiagrama || isSaving || !newClassName.trim()} onClick={addClass} type="button">
-                  <Plus size={18} /> Crear clase
-                </button>
-
-                {selectedNode ? (
-                  <section className="selected-class-panel">
-                    <div className="panel-title">
-                      <div>
-                        <p>Seleccionada</p>
-                        <h2>{selectedNode.data.name}</h2>
-                      </div>
-                    </div>
-
-                    <label>
-                      Nombre
-                      <input
-                        onChange={(event) =>
-                          setNodes((current) =>
-                            current.map((node) =>
-                              node.id === selectedNode.id
-                                ? {
-                                    ...node,
-                                    data: {
-                                      ...node.data,
-                                      name: event.target.value,
-                                    },
-                                  }
-                                : node,
-                            ),
-                          )
-                        }
-                        value={selectedNode.data.name}
-                      />
-                    </label>
-
-                    <div className="class-items-list">
-                      {selectedNode.data.attributes.map((attribute, index) => (
-                        <span key={`${String(attribute.name)}-${index}`}>
-                          {String(attribute.name)}: {String(attribute.type)}
-                        </span>
-                      ))}
-                    </div>
-
-                    <button className="ghost-button" disabled={isSaving || !newAttributeName.trim()} onClick={addAttributeToSelectedClass} type="button">
-                      <Plus size={17} /> Agregar atributo
-                    </button>
-
-                    <div className="form-row two-columns">
-                      <label>
-                        Metodo
-                        <input
-                          onChange={(event) => setNewMethodName(event.target.value)}
-                          placeholder="registrar"
-                          value={newMethodName}
-                        />
-                      </label>
-                      <label>
-                        Retorno
-                        <input
-                          onChange={(event) => setNewMethodReturnType(event.target.value)}
-                          placeholder="void"
-                          value={newMethodReturnType}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="class-items-list">
-                      {selectedNode.data.methods.map((method, index) => (
-                        <span key={`${String(method.name)}-${index}`}>
-                          {String(method.name)}(): {String(method.returnType ?? 'void')}
-                        </span>
-                      ))}
-                    </div>
-
-                    <button className="ghost-button" disabled={isSaving || !newMethodName.trim()} onClick={addMethodToSelectedClass} type="button">
-                      <Plus size={17} /> Agregar metodo
-                    </button>
-
-                    <button className="primary-action" disabled={isSaving} onClick={() => saveSelectedClass(selectedNode.data)} type="button">
-                      <Save size={18} /> Guardar clase
-                    </button>
-                  </section>
-                ) : (
-                  <div className="empty-state compact">Selecciona una clase del canvas para editarla.</div>
-                )}
+                <DiagramAssistantPanel
+                  canEditDiagram={canEditDiagram}
+                  onDiagramUpdated={handleAiDiagramUpdated}
+                  selectedDiagrama={selectedDiagrama}
+                  selectedProyecto={selectedProyecto}
+                  userProfile={userProfile}
+                />
               </aside>
             </section>
           </>

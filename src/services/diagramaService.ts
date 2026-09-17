@@ -7,10 +7,18 @@ export type DiagramNode = {
     x: number
     y: number
   }
+  style?: {
+    width?: number | string
+    height?: number | string
+    [key: string]: unknown
+  }
   data: {
     name: string
     attributes: Record<string, unknown>[]
     methods: Record<string, unknown>[]
+    kind?: 'class' | 'abstractClass' | 'interface'
+    templateParameters?: string[]
+    [key: string]: unknown
   }
 }
 
