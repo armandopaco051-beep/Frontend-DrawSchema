@@ -1,11 +1,19 @@
 import { create } from 'zustand'
 import type { ClassFlowEdge, ClassFlowNode, DiagramEvent } from '../types/relation.types'
 
+export type ActiveNodeCollaborator = {
+  codigo?: string
+  nombre?: string
+  email?: string
+  lastActiveAt: number
+}
+
 type DiagramState = {
   nodes: ClassFlowNode[]
   relations: ClassFlowEdge[]
   selectedRelationId: string
   pendingEvents: DiagramEvent[]
+  nodeCollaborators: Record<string, ActiveNodeCollaborator>
   setDiagramState: (nodes: ClassFlowNode[], relations: ClassFlowEdge[]) => void
   addRelation: (relation: ClassFlowEdge, event?: DiagramEvent) => void
   updateRelation: (relationId: string, relation: ClassFlowEdge, event?: DiagramEvent) => void
@@ -13,6 +21,8 @@ type DiagramState = {
   setSelectedRelationId: (relationId: string) => void
   recordEvent: (event: DiagramEvent) => void
   clearPendingEvents: () => void
+  setNodeCollaborator: (nodeId: string, collaborator: ActiveNodeCollaborator) => void
+  clearNodeCollaborator: (nodeId: string) => void
 }
 
 export const useDiagramStore = create<DiagramState>((set) => ({
@@ -20,6 +30,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   relations: [],
   selectedRelationId: '',
   pendingEvents: [],
+  nodeCollaborators: {},
   setDiagramState: (nodes, relations) =>
     set({
       nodes,
@@ -54,4 +65,18 @@ export const useDiagramStore = create<DiagramState>((set) => ({
     set({
       pendingEvents: [],
     }),
+  setNodeCollaborator: (nodeId, collaborator) =>
+    set((state) => ({
+      nodeCollaborators: {
+        ...state.nodeCollaborators,
+        [nodeId]: collaborator,
+      },
+    })),
+  clearNodeCollaborator: (nodeId) =>
+    set((state) => {
+      const next = { ...state.nodeCollaborators }
+      delete next[nodeId]
+      return { nodeCollaborators: next }
+    }),
 }))
+

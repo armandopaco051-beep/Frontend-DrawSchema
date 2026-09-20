@@ -319,12 +319,91 @@
   padding: 16px;
 }
 
+.ai-codegen-launcher {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #292929;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(143, 182, 255, 0.055), transparent 110px),
+    #111111;
+  padding: 12px;
+}
+
+.ai-codegen-launcher-inline {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.ai-codegen-open-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  background: #f4f4f4;
+  color: #080808;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0 12px;
+}
+
+.ai-codegen-launcher-inline .ai-codegen-open-button {
+  min-height: 42px;
+  border-color: #303030;
+  background: #f4f4f4;
+  color: #080808;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.ai-codegen-launcher small {
+  color: #9aa8ba;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ai-codegen-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.58);
+  padding: 18px;
+}
+
+.ai-codegen-modal {
+  width: min(560px, calc(100vw - 28px));
+  max-height: calc(100svh - 36px);
+  overflow-y: auto;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
 .ai-codegen-panel .ai-planner-header {
   justify-content: space-between;
 }
 
 .ai-codegen-panel .ai-planner-header svg {
   color: #8fb6ff;
+}
+
+.ai-codegen-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid #303030;
+  border-radius: 10px;
+  background: #080808;
+  color: #ffffff;
+  cursor: pointer;
 }
 
 .ai-codegen-form {
@@ -550,16 +629,105 @@
 }
 
 .users-page-light .ai-codegen-panel,
+.users-page-light .ai-chat-panel,
+.users-page-light .ai-chat-bubble,
+.users-page-light .ai-chat-composer,
+.users-page-light .ai-context-grid input,
 .users-page-light .ai-codegen-message,
 .users-page-light .ai-codegen-result {
   border-color: #d9d6cf;
   background: #ffffff;
 }
 
+.users-page-light .ai-chat-panel {
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.06), transparent 140px),
+    #fbfaf7;
+}
+
+.users-page-light .ai-planner-header {
+  border-bottom-color: #dedbd4;
+}
+
+.users-page-light .ai-planner-header h2,
+.users-page-light .ai-chat-empty strong,
+.users-page-light .ai-chat-action strong,
+.users-page-light .ai-chat-section-title {
+  color: #111111;
+}
+
+.users-page-light .ai-chat-empty p,
+.users-page-light .ai-chat-bubble,
+.users-page-light .ai-chat-action small,
+.users-page-light .ai-chat-questions p,
+.users-page-light .ai-typing {
+  color: #475569;
+}
+
+.users-page-light .ai-chat-message.user .ai-chat-bubble {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: #eaf2ff;
+  color: #111111;
+}
+
+.users-page-light .ai-chat-message.error .ai-chat-bubble {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.users-page-light .ai-chat-composer textarea,
+.users-page-light .ai-context-grid input {
+  color: #111111;
+}
+
+.users-page-light .ai-chat-composer button {
+  background: #111111;
+  color: #ffffff;
+}
+
 .users-page-light .ai-codegen-panel {
   background:
     linear-gradient(180deg, rgba(37, 99, 235, 0.07), transparent 140px),
     #fbfaf7;
+}
+
+.users-page-light .ai-codegen-launcher {
+  border-color: #d9d6cf;
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.07), transparent 110px),
+    #fbfaf7;
+}
+
+.users-page-light .ai-codegen-open-button {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+.users-page-light .ai-codegen-launcher-inline {
+  border: 0;
+  background: transparent;
+}
+
+.users-page-light .ai-codegen-launcher-inline .ai-codegen-open-button {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+.users-page-light .ai-codegen-launcher small {
+  color: #475569;
+}
+
+.users-page-light .ai-codegen-overlay {
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.users-page-light .ai-codegen-close {
+  border-color: #d9d6cf;
+  background: #ffffff;
+  color: #111111;
 }
 
 .users-page-light .ai-codegen-form label,

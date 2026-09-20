@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, Server } from 'lucide-react'
+import { Download, Loader2, Server, X } from 'lucide-react'
 import { ApiError } from '../../services/api'
 import {
   downloadGeneratedBackend,
@@ -11,6 +11,7 @@ type AiCodegenPanelProps = {
   proyectoId?: number | null
   proyectoNombre?: string | null
   diagramaId?: number | null
+  variant?: 'panel' | 'button'
 }
 
 function toSlug(value: string) {
@@ -27,7 +28,7 @@ function defaultProjectName(proyectoNombre?: string | null) {
   return slug ? `${slug}-api` : 'generated-api'
 }
 
-export function AiCodegenPanel({ diagramaId, proyectoId, proyectoNombre }: AiCodegenPanelProps) {
+export function AiCodegenPanel({ diagramaId, proyectoId, proyectoNombre, variant = 'panel' }: AiCodegenPanelProps) {
   const suggestedProjectName = useMemo(() => defaultProjectName(proyectoNombre), [proyectoNombre])
   const [projectName, setProjectName] = useState(suggestedProjectName)
   const [basePackage, setBasePackage] = useState('com.drawschema.generated')
@@ -38,6 +39,7 @@ export function AiCodegenPanel({ diagramaId, proyectoId, proyectoNombre }: AiCod
   const [downloadMessage, setDownloadMessage] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
 
   useEffect(() => {
     setProjectName(suggestedProjectName)
@@ -143,101 +145,117 @@ export function AiCodegenPanel({ diagramaId, proyectoId, proyectoNombre }: AiCod
   }
 
   return (
-    <section className="ai-codegen-panel">
-      <header className="ai-planner-header">
-        <div>
-          <p>Backend</p>
-          <h2>Generar Spring Boot</h2>
-        </div>
-        <Server size={18} />
-      </header>
-
-      <div className="ai-codegen-form">
-        <label>
-          Nombre del proyecto
-          <input
-            onChange={(event) => setProjectName(event.target.value)}
-            placeholder="ventas-api"
-            value={projectName}
-          />
-        </label>
-
-        <label>
-          Base package
-          <input
-            onChange={(event) => setBasePackage(event.target.value)}
-            placeholder="com.drawschema.ventas"
-            value={basePackage}
-          />
-        </label>
-
-        <label>
-          Base de datos
-          <input
-            onChange={(event) => setDatabaseName(event.target.value)}
-            placeholder="ventas_db"
-            value={databaseName}
-          />
-        </label>
-
-        <label>
-          Mensaje opcional
-          <textarea
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Genera un backend Spring Boot completo con CRUD y PostgreSQL"
-            value={message}
-          />
-        </label>
-
-        <button
-          className="primary-action ai-codegen-primary"
-          disabled={isGenerating}
-          onClick={handleGenerate}
-          type="button"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="ai-spin" size={17} /> Generando...
-            </>
-          ) : (
-            <>
-              <Server size={17} /> Generar backend
-            </>
-          )}
+    <>
+      <section className={variant === 'button' ? 'ai-codegen-launcher ai-codegen-launcher-inline' : 'ai-codegen-launcher'}>
+        <button className="ai-codegen-open-button" onClick={() => setIsOpen(true)} type="button">
+          <Server size={17} />
+          Generar backend
         </button>
-      </div>
+        {variant === 'panel' && result ? <small>Ultimo generado: {result.project_name}</small> : null}
+      </section>
 
-      {error ? <p className="ai-codegen-message error">{error}</p> : null}
-      {downloadMessage ? <p className="ai-codegen-message success">{downloadMessage}</p> : null}
+      {isOpen ? (
+        <div className="ai-codegen-overlay" role="dialog" aria-modal="true" aria-label="Generar backend Spring Boot">
+          <section className="ai-codegen-panel ai-codegen-modal">
+            <header className="ai-planner-header">
+              <div>
+                <p>Backend</p>
+                <h2>Generar Spring Boot</h2>
+              </div>
+              <button className="ai-codegen-close" onClick={() => setIsOpen(false)} type="button" aria-label="Cerrar">
+                <X size={18} />
+              </button>
+            </header>
 
-      {result ? (
-        <div className="ai-codegen-result">
-          <p>{result.summary || 'Backend Spring Boot generado.'}</p>
-          <div className="ai-codegen-meta">
-            <span>{result.files?.length ?? 0} archivos</span>
-            <span>{result.database_name}</span>
-          </div>
+            <div className="ai-codegen-form">
+              <label>
+                Nombre del proyecto
+                <input
+                  onChange={(event) => setProjectName(event.target.value)}
+                  placeholder="ventas-api"
+                  value={projectName}
+                />
+              </label>
 
-          {result.warnings?.length > 0 ? (
-            <div className="ai-codegen-warnings">
-              <strong>Advertencias</strong>
-              {result.warnings.map((warning, index) => (
-                <p key={`${warning}-${index}`}>{warning}</p>
-              ))}
+              <label>
+                Base package
+                <input
+                  onChange={(event) => setBasePackage(event.target.value)}
+                  placeholder="com.drawschema.ventas"
+                  value={basePackage}
+                />
+              </label>
+
+              <label>
+                Base de datos
+                <input
+                  onChange={(event) => setDatabaseName(event.target.value)}
+                  placeholder="ventas_db"
+                  value={databaseName}
+                />
+              </label>
+
+              <label>
+                Mensaje opcional
+                <textarea
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Genera un backend Spring Boot completo con CRUD y PostgreSQL"
+                  value={message}
+                />
+              </label>
+
+              <button
+                className="primary-action ai-codegen-primary"
+                disabled={isGenerating}
+                onClick={handleGenerate}
+                type="button"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="ai-spin" size={17} /> Generando...
+                  </>
+                ) : (
+                  <>
+                    <Server size={17} /> Generar backend
+                  </>
+                )}
+              </button>
             </div>
-          ) : null}
 
-          <button
-            className="ghost-button ai-codegen-download"
-            disabled={(!result.generation_id && !result.download_url) || isDownloading}
-            onClick={handleDownload}
-            type="button"
-          >
-            <Download size={17} />
-            {isDownloading ? 'Descargando...' : 'Descargar ZIP'}
-          </button>
+            {error ? <p className="ai-codegen-message error">{error}</p> : null}
+            {downloadMessage ? <p className="ai-codegen-message success">{downloadMessage}</p> : null}
+
+            {result ? (
+              <div className="ai-codegen-result">
+                <p>{result.summary || 'Backend Spring Boot generado.'}</p>
+                <div className="ai-codegen-meta">
+                  <span>{result.files?.length ?? 0} archivos</span>
+                  <span>{result.database_name}</span>
+                </div>
+
+                {result.warnings?.length > 0 ? (
+                  <div className="ai-codegen-warnings">
+                    <strong>Advertencias</strong>
+                    {result.warnings.map((warning, index) => (
+                      <p key={`${warning}-${index}`}>{warning}</p>
+                    ))}
+                  </div>
+                ) : null}
+
+                <button
+                  className="ghost-button ai-codegen-download"
+                  disabled={(!result.generation_id && !result.download_url) || isDownloading}
+                  onClick={handleDownload}
+                  type="button"
+                >
+                  <Download size={17} />
+                  {isDownloading ? 'Descargando...' : 'Descargar ZIP'}
+                </button>
+              </div>
+            ) : null}
+          </section>
         </div>
       ) : null}
-    </section>
+    </>
   )
 }

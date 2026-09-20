@@ -306,6 +306,14 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.diagram-header-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .project-role-badge {
@@ -328,19 +336,295 @@
   color: #fde68a;
 }
 
+.realtime-users {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  background: #151515;
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.realtime-users.realtime-disconnected {
+  color: #fecaca;
+}
+
+.realtime-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.realtime-avatar-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.realtime-avatar-wrapper + .realtime-avatar-wrapper {
+  margin-left: -7px;
+}
+
+.realtime-avatar {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 2px solid #141414;
+  border-radius: 999px;
+  background: #0b5ed7;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 160ms ease, z-index 160ms ease;
+  position: relative;
+  z-index: 1;
+}
+
+.realtime-avatar-wrapper:hover .realtime-avatar {
+  transform: translateY(-2px) scale(1.1);
+  z-index: 20;
+}
+
+/* Tooltip al poner el puntero en el avatar del header */
+.realtime-avatar-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  background: #1e1e24;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  min-width: 170px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.realtime-avatar-wrapper:hover .realtime-avatar-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.realtime-avatar-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar-tooltip-circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.realtime-avatar-tooltip-header strong {
+  display: block;
+  font-size: 12px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.realtime-avatar-tooltip-header span {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.realtime-avatar-tooltip-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 4px;
+}
+
+.avatar-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  animation: pulseCollaborator 1.8s infinite;
+}
+
+.realtime-more {
+  background: #232323 !important;
+  border-color: #333333 !important;
+  margin-left: -7px;
+}
+
+/* Indicador de colaborador en el nodo de clase (Figma / Miro style) */
+.flow-node-collaborator-pill {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 30;
+  animation: collaboratorPillSlideIn 200ms ease-out;
+}
+
+@keyframes collaboratorPillSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.flow-node-collaborator-avatar {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.flow-node-collaborator-text {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tooltip interactivo sobre el pill de clase */
+.flow-node-collaborator-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  padding: 10px 12px;
+  background: #1a1a22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 100;
+}
+
+.flow-node-collaborator-pill:hover .flow-node-collaborator-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.collaborator-tooltip-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collaborator-tooltip-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.collaborator-tooltip-names {
+  display: flex;
+  flex-direction: column;
+}
+
+.collaborator-tooltip-names strong {
+  font-size: 12px;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.collaborator-tooltip-names span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.collaborator-tooltip-names small {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.collaborator-tooltip-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 5px;
+}
+
+.collaborator-status-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  animation: pulseCollaborator 1.6s infinite;
+}
+
+@keyframes pulseCollaborator {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+
 .diagrammer-save {
   min-width: 128px;
 }
 
 .diagrammer-shell {
   display: grid;
-  grid-template-columns: 240px minmax(480px, 1fr) 320px;
+  grid-template-columns: 210px minmax(560px, 1fr) 320px;
   align-items: start;
   gap: 14px;
   height: auto;
   min-height: 0;
   min-width: 0;
   overflow: visible;
+}
+
+.diagram-assistant-hidden .diagrammer-shell {
+  grid-template-columns: 210px minmax(0, 1fr);
 }
 
 .diagrammer-left-panel,
@@ -351,7 +635,7 @@
 
 .diagrammer-left-panel {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   overflow: visible;
 }
 
@@ -361,10 +645,187 @@
   overflow-y: visible;
 }
 
+.diagram-file-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr);
+  align-items: end;
+  gap: 12px;
+  border: 1px solid #303030;
+  border-radius: 16px;
+  background: #111111;
+  padding: 12px;
+}
+
+.diagram-picker {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(260px, 1fr);
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.diagram-picker label {
+  display: grid;
+  gap: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.diagram-picker select,
+.diagram-new-inline input {
+  width: 100%;
+  min-height: 38px;
+  min-width: 0;
+  border: 1px solid #303030;
+  border-radius: 11px;
+  background: #050505;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.diagram-new-inline {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 38px 38px;
+  gap: 8px;
+}
+
+.diagram-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-toolbar-button {
+  position: relative;
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  background: #050505;
+  color: #dbeafe;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.file-toolbar-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-toolbar-button:hover:not(:disabled):not(.disabled) {
+  border-color: #8fb6ff;
+  background: #151b27;
+  color: #ffffff;
+}
+
+.file-toolbar-button:disabled,
+.file-toolbar-button.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.assistant-toggle.active {
+  border-color: rgba(143, 182, 255, 0.72);
+  background: #111827;
+  color: #ffffff;
+}
+
 .student-create-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.xmi-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.xmi-action {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid #303030;
+  border-radius: 10px;
+  background: #101010;
+  color: #dbeafe;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 9px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.xmi-action input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.xmi-action:hover:not(:disabled):not(.disabled) {
+  border-color: #8fb6ff;
+  background: #151b27;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.xmi-action:disabled,
+.xmi-action.disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.version-history-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  background: #151515;
+  color: #dbeafe;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 0 12px;
+}
+
+.version-history-link:hover:not(:disabled) {
+  border-color: #8fb6ff;
+  background: #151b27;
+  color: #ffffff;
+}
+
+.version-history-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .diagram-list {
@@ -730,8 +1191,9 @@
   display: grid;
   height: 100%;
   min-height: 180px;
-  grid-template-rows: auto minmax(46px, 1fr) auto;
-  overflow: hidden;
+  grid-template-rows: auto auto auto;
+  overflow: visible;
+  position: relative;
   border: 1px solid #4b5563;
   border-radius: 13px;
   background: #171717;
@@ -756,6 +1218,8 @@
   border-bottom: 1px solid #323232;
   background: #262626;
   padding: 12px 14px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
 }
 
 .flow-class-node strong {
@@ -771,8 +1235,14 @@
 .flow-class-node footer {
   display: grid;
   gap: 4px;
-  min-height: 46px;
+  min-height: 42px;
+  align-content: start;
   padding: 10px 14px;
+}
+
+.flow-class-node footer {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 .flow-class-node div {
@@ -784,6 +1254,10 @@
   color: #dbeafe;
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow-class-node .muted-line {
@@ -1772,6 +2246,21 @@
   color: #854d0e;
 }
 
+.users-page-light .realtime-users {
+  border-color: #d4d4ce;
+  background: #ffffff;
+  color: #2563eb;
+}
+
+.users-page-light .realtime-users.realtime-disconnected {
+  color: #b91c1c;
+}
+
+.users-page-light .realtime-more {
+  background: #f1f5f9;
+  color: #2563eb;
+}
+
 .users-page-light .users-message.info,
 .users-page-light .collaborators-message.info {
   border-color: #bfdbfe;
@@ -1821,6 +2310,51 @@
   background: #f7f7f4;
 }
 
+.users-page-light .xmi-action {
+  border-color: #d4d4ce;
+  background: #ffffff;
+  color: #2563eb;
+}
+
+.users-page-light .xmi-action:hover:not(:disabled):not(.disabled) {
+  border-color: #2563eb;
+  background: #f7f7f4;
+  color: #111111;
+}
+
+.users-page-light .version-history-link {
+  border-color: #d4d4ce;
+  background: #ffffff;
+  color: #2563eb;
+}
+
+.users-page-light .version-history-link:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #f7f7f4;
+  color: #111111;
+}
+
+.users-page-light .diagram-file-toolbar,
+.users-page-light .file-toolbar-button,
+.users-page-light .diagram-picker select,
+.users-page-light .diagram-new-inline input {
+  border-color: #d4d4ce;
+  background: #ffffff;
+  color: #111111;
+}
+
+.users-page-light .file-toolbar-button:hover:not(:disabled):not(.disabled) {
+  border-color: #2563eb;
+  background: #f7f7f4;
+  color: #111111;
+}
+
+.users-page-light .assistant-toggle.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #111111;
+}
+
 .users-page-light .student-project-form input,
 .users-page-light .student-project-form textarea,
 .users-page-light .student-create-row input,
@@ -1859,6 +2393,13 @@
   border-color: #bbf7d0;
   background: #f0fdf4;
   color: #166534;
+}
+
+.users-page-light .users-message.success {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 900;
 }
 
 .users-page-light .react-flow-canvas {
@@ -2130,12 +2671,26 @@
 
 @media (max-width: 1280px) {
   .diagrammer-shell {
-    grid-template-columns: 230px minmax(0, 1fr) 300px;
+    grid-template-columns: 200px minmax(0, 1fr) 300px;
     gap: 12px;
   }
 
-  .diagram-list {
-    max-height: 28svh;
+  .diagram-assistant-hidden .diagrammer-shell {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .diagram-file-toolbar,
+  .diagram-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .diagram-header-file-actions,
+  .diagram-file-actions {
+    justify-content: stretch;
+  }
+
+  .file-toolbar-button {
+    flex: 1 1 0;
   }
 
   .react-flow-canvas {
@@ -2151,7 +2706,11 @@
 
 @media (max-width: 1080px) {
   .diagrammer-shell {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  }
+
+  .diagram-assistant-hidden .diagrammer-shell {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   }
 
   .diagrammer-right-panel {
@@ -2315,7 +2874,13 @@
     grid-template-columns: 1fr;
   }
 
+  .diagram-header-file-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .project-role-badge,
+  .realtime-users,
   .diagrammer-save,
   .diagrammer-header-actions .primary-action {
     width: 100%;
@@ -2323,7 +2888,13 @@
   }
 
   .diagram-canvas-topbar,
+  .diagram-file-toolbar,
+  .diagram-picker,
+  .diagram-header-file-actions,
+  .diagram-file-actions,
+  .diagram-new-inline,
   .student-create-row,
+  .xmi-actions,
   .class-features-header,
   .features-grid-attributes,
   .features-grid-methods,
@@ -2449,4 +3020,81 @@
   .react-flow-canvas {
     min-height: 340px;
   }
+}
+
+/* Invitation & Join Project Buttons */
+.join-project-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12));
+  color: #a5b4fc;
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.join-project-trigger-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border-color: rgba(129, 140, 248, 0.7);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+}
+
+.users-page-light .join-project-trigger-btn {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(168, 85, 247, 0.08));
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.users-page-light .join-project-trigger-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15));
+  border-color: #4f46e5;
+  color: #312e81;
+}
+
+.invite-collaborators-code-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invite-collaborators-code-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #818cf8;
+  color: #ffffff;
+}
+
+.users-page-light .invite-collaborators-code-btn {
+  background: rgba(99, 102, 241, 0.06);
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.users-page-light .invite-collaborators-code-btn:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: #3730a3;
+}
+
+.file-toolbar-button.invite-toolbar-btn {
+  color: #a5b4fc;
+}
+
+.file-toolbar-button.invite-toolbar-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: #ffffff;
 }

@@ -1,4 +1,3 @@
-import { AiCodegenPanel } from '../../ai/AiCodegenPanel'
 import { AiPlannerPanel } from '../../ai/AiPlannerPanel'
 import type { Proyecto } from '../../../models/proyecto'
 import type { DiagramaResponse } from '../../../services/diagramaService'
@@ -6,6 +5,7 @@ import type { AuthUserProfile } from '../../../utils/auth'
 
 type DiagramAssistantPanelProps = {
   canEditDiagram: boolean
+  isAssistantVisible: boolean
   selectedDiagrama: DiagramaResponse | null
   selectedProyecto: Proyecto | null
   userProfile: AuthUserProfile | null
@@ -14,6 +14,7 @@ type DiagramAssistantPanelProps = {
 
 export function DiagramAssistantPanel({
   canEditDiagram,
+  isAssistantVisible,
   onDiagramUpdated,
   selectedDiagrama,
   selectedProyecto,
@@ -25,19 +26,16 @@ export function DiagramAssistantPanel({
 
   return (
     <>
-      <AiPlannerPanel
-        autorCodigo={userProfile?.codigo}
-        canEdit={canEditDiagram}
-        compact
-        diagramaId={selectedDiagrama.id}
-        onDiagramUpdated={onDiagramUpdated}
-        proyectoId={selectedProyecto.id}
-      />
-      <AiCodegenPanel
-        diagramaId={selectedDiagrama.id}
-        proyectoId={selectedProyecto.id}
-        proyectoNombre={selectedProyecto.nombre}
-      />
+      {isAssistantVisible ? (
+        <AiPlannerPanel
+          autorCodigo={userProfile?.codigo}
+          canEdit={canEditDiagram}
+          compact
+          diagramaId={selectedDiagrama.id}
+          onDiagramUpdated={onDiagramUpdated}
+          proyectoId={selectedProyecto.id}
+        />
+      ) : null}
     </>
   )
 }

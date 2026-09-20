@@ -12,25 +12,39 @@ import type {
 import {
   ArrowLeft,
   ChevronDown,
+  Clock3,
   Database,
+  Download,
   FileCode2,
   FolderKanban,
   LayoutDashboard,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   RefreshCw,
   Save,
+  Share2,
+  Sparkles,
   Trash2,
+  Upload,
+  UserPlus,
 } from 'lucide-react'
 import { AdminSidebarExtras } from '../../components/admin/AdminSidebarExtras'
+import { AiCodegenPanel } from '../../features/ai/AiCodegenPanel'
+import { CommentsDrawer } from '../../features/comments/components/CommentsDrawer'
 import { ClassFeaturesPanel } from '../../features/diagramador/components/ClassFeaturesPanel'
 import { CreateClassPanel } from '../../features/diagramador/components/CreateClassPanel'
 import { DiagramAssistantPanel } from '../../features/diagramador/components/DiagramAssistantPanel'
 import { DiagramCanvas } from '../../features/diagramador/components/DiagramCanvas'
-import { DiagramListPanel } from '../../features/diagramador/components/DiagramListPanel'
+import { InviteModal } from '../../features/projects/components/InviteModal'
+import { JoinProjectModal } from '../../features/projects/components/JoinProjectModal'
 import { RelationBuilderPanel, RelationsPanel } from '../../features/diagramador/components/RelationsPanel'
+import { useCommentStore } from '../../features/comments/store/comment.store'
 import { useDiagramStore } from '../../features/diagrams/store/diagram.store'
+import { getCollaboratorColor, getCollaboratorInitials } from '../../utils/collaboratorColor'
+import { listarComentarios } from '../../services/comentarioService'
+import type { Comentario } from '../../models/comentario'
 import type {
   Cardinality,
   ClassAttribute,
@@ -55,10 +69,19 @@ import {
   agregarClase,
   crearDiagrama,
   eliminarDiagrama,
+  exportarDiagramaXmi,
   guardarDiagrama,
+  importarXmiEnProyecto,
   listarDiagramasPorProyecto,
   moverClase,
 } from '../../services/diagramaService'
+import {
+  connectDiagramSocket,
+  disconnectDiagramSocket,
+  sendRealtimeEvent,
+  type RealtimeDiagramEvent,
+  type RealtimeDiagramUser,
+} from '../../services/realtimeDiagramService'
 import {
   actualizarMiembro,
   agregarMiembro,
@@ -80,6 +103,7 @@ type EstudiantePageProps = {
   onBack: () => void
   onProfile: () => void
   onToggleTheme: () => void
+  onVersionHistory: (diagrama: DiagramaResponse) => void
 }
 
 type StudentView = 'projects' | 'diagrammer'
@@ -107,17 +131,36 @@ const emptyContent: DiagramContent = {
 
 const standardClassWidth = 245
 const standardClassHeight = 180
+const classNodeHeaderHeight = 46
+const classNodeSectionPadding = 40
+const classNodeRowHeight = 22
+const classNodeFooterGap = 12
 
-function formatDate(value?: string | null) {
-  if (!value) {
-    return 'Sin fecha'
+function getClassNodeHeight(data: Pick<ClassNodeData, 'attributes' | 'methods'>) {
+  const attributeCount = Math.max(data.attributes.length, 1)
+  const methodCount = Math.max(data.methods.length, 1)
+
+  return Math.max(
+    standardClassHeight,
+    classNodeHeaderHeight +
+      classNodeSectionPadding +
+      attributeCount * classNodeRowHeight +
+      methodCount * classNodeRowHeight +
+      classNodeFooterGap,
+  )
+}
+
+function getClassNodeStyle(
+  data: Pick<ClassNodeData, 'attributes' | 'methods'>,
+  style?: ClassFlowNode['style'],
+  measuredWidth?: number | null,
+  measuredHeight?: number | null,
+) {
+  return {
+    ...style,
+    width: Math.max(Number(style?.width ?? measuredWidth ?? standardClassWidth), standardClassWidth),
+    height: Math.max(Number(style?.height ?? measuredHeight ?? standardClassHeight), getClassNodeHeight(data)),
   }
-
-  return new Date(value).toLocaleDateString('es-BO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 function getMemberRoleName(roleId: number) {
@@ -178,22 +221,22 @@ function normalizeContent(content?: DiagramContent | null) {
 }
 
 function toFlowNodes(nodes: DiagramNode[]): ClassFlowNode[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    type: 'classNode',
-    position: node.position,
-    style: {
-      ...node.style,
-      width: Math.max(Number(node.style?.width ?? standardClassWidth), standardClassWidth),
-      height: Math.max(Number(node.style?.height ?? standardClassHeight), standardClassHeight),
-    },
-    data: {
+  return nodes.map((node) => {
+    const data = {
       ...node.data,
       name: node.data.name,
       attributes: node.data.attributes as ClassAttribute[],
       methods: node.data.methods as ClassMethod[],
-    },
-  }))
+    }
+
+    return {
+      id: node.id,
+      type: 'classNode',
+      position: node.position,
+      style: getClassNodeStyle(data, node.style),
+      data,
+    }
+  })
 }
 
 function toFlowEdges(edges: DiagramEdge[]): ClassFlowEdge[] {
@@ -225,10 +268,7 @@ function toDiagramContent(nodes: ClassFlowNode[], edges: ClassFlowEdge[]): Diagr
       id: node.id,
       type: 'classNode',
       position: node.position,
-      style: {
-        width: Math.max(Number(node.style?.width ?? node.width ?? standardClassWidth), standardClassWidth),
-        height: Math.max(Number(node.style?.height ?? node.height ?? standardClassHeight), standardClassHeight),
-      },
+      style: getClassNodeStyle(node.data, node.style, node.width, node.height),
       data: {
         ...node.data,
         name: node.data.name,
@@ -381,6 +421,7 @@ export function EstudiantePage({
   onBack,
   onProfile,
   onToggleTheme,
+  onVersionHistory,
 }: EstudiantePageProps) {
   const [view, setView] = useState<StudentView>('projects')
   const [proyectos, setProyectos] = useState<Proyecto[]>([])
@@ -411,20 +452,42 @@ export function EstudiantePage({
   const [relationTargetId, setRelationTargetId] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isXmiBusy, setIsXmiBusy] = useState(false)
   const [isMembersLoading, setIsMembersLoading] = useState(false)
   const [isMembersSaving, setIsMembersSaving] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isCreateClassOpen, setIsCreateClassOpen] = useState(false)
   const [isRelationToolboxOpen, setIsRelationToolboxOpen] = useState(true)
+  const [isAssistantVisible, setIsAssistantVisible] = useState(true)
+  const [activeRealtimeUsers, setActiveRealtimeUsers] = useState<RealtimeDiagramUser[]>([])
+  const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [membersMessage, setMembersMessage] = useState('')
   const [membersError, setMembersError] = useState('')
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [inviteTargetProyecto, setInviteTargetProyecto] = useState<{ id: number; nombre: string } | null>(null)
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
+  const [urlInviteCode, setUrlInviteCode] = useState('')
   const setDiagramState = useDiagramStore((state) => state.setDiagramState)
   const addStoredRelation = useDiagramStore((state) => state.addRelation)
   const updateStoredRelation = useDiagramStore((state) => state.updateRelation)
   const removeStoredRelation = useDiagramStore((state) => state.removeRelation)
   const setStoredSelectedRelationId = useDiagramStore((state) => state.setSelectedRelationId)
+  const setNodeCollaborator = useDiagramStore((state) => state.setNodeCollaborator)
+  const clearNodeCollaborator = useDiagramStore((state) => state.clearNodeCollaborator)
+  const collaboratorTimeoutsRef = useRef<Record<string, number>>({})
+  const isCommentsOpen = useCommentStore((state) => state.isOpen)
+  const setIsCommentsOpen = useCommentStore((state) => state.setIsOpen)
+  const toggleCommentsDrawer = () => setIsCommentsOpen(!isCommentsOpen)
+  const setComentarios = useCommentStore((state) => state.setComentarios)
+  const addComentario = useCommentStore((state) => state.addComentario)
+  const updateComentario = useCommentStore((state) => state.updateComentario)
+  const removeComentario = useCommentStore((state) => state.removeComentario)
+  const totalPendingComments = useCommentStore((state) => state.totalPendingCount)
+  const lastRealtimeMoveAtRef = useRef(0)
+  const nodesRef = useRef<ClassFlowNode[]>([])
+  const edgesRef = useRef<ClassFlowEdge[]>([])
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -438,12 +501,232 @@ export function EstudiantePage({
   const canManageMembers = miembroActual?.id_rol === 2
   const canViewOnly = miembroActual?.id_rol === 4
 
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('invitacion') || params.get('codigo')
+      if (code) {
+        setUrlInviteCode(code.trim().toUpperCase())
+        setIsJoinModalOpen(true)
+        const cleanUrl = window.location.pathname
+        window.history.replaceState({}, '', cleanUrl)
+      }
+    } catch {
+      // Ignore URL parsing error
+    }
+  }, [])
+
   function denyDiagramEdit() {
     setError('No tienes permiso para editar este diagrama.')
   }
 
   function denyMemberManagement() {
     setMembersError('No tienes permiso para gestionar colaboradores')
+  }
+
+  function upsertRealtimeUser(user?: RealtimeDiagramUser) {
+    if (!user?.codigo) {
+      return
+    }
+
+    setActiveRealtimeUsers((current) => {
+      const exists = current.some((item) => item.codigo === user.codigo)
+      return exists ? current.map((item) => (item.codigo === user.codigo ? { ...item, ...user } : item)) : [...current, user]
+    })
+  }
+
+  function removeRealtimeUser(user?: RealtimeDiagramUser) {
+    if (!user?.codigo) {
+      return
+    }
+
+    setActiveRealtimeUsers((current) => current.filter((item) => item.codigo !== user.codigo))
+  }
+
+  function applyRealtimeEvent(event: RealtimeDiagramEvent) {
+    const payload = (event.payload ?? {}) as Record<string, unknown>
+    const eventUser = event.user ?? (payload.user as RealtimeDiagramUser | undefined)
+
+    if (event.type === 'connection_ack') {
+      const users = payload.users
+      if (Array.isArray(users)) {
+        setActiveRealtimeUsers(
+          users
+            .filter((user): user is RealtimeDiagramUser => Boolean(user && typeof user === 'object'))
+            .filter((user) => user.codigo !== userProfile?.codigo),
+        )
+        return
+      }
+
+      upsertRealtimeUser(eventUser)
+      return
+    }
+
+    if (event.type === 'user_joined') {
+      upsertRealtimeUser(eventUser)
+      return
+    }
+
+    if (event.type === 'user_left') {
+      removeRealtimeUser(eventUser)
+      return
+    }
+
+    if (eventUser?.codigo && eventUser.codigo === userProfile?.codigo) {
+      return
+    }
+
+    if (event.type === 'event_rejected') {
+      setError('No tienes permiso para realizar esa accion en tiempo real')
+      return
+    }
+
+    if (event.type === 'class_moved') {
+      const classId = String(payload.class_id ?? '')
+      const position = payload.position as { x?: number; y?: number } | undefined
+
+      if (!classId || typeof position?.x !== 'number' || typeof position?.y !== 'number') {
+        return
+      }
+
+      if (eventUser) {
+        setNodeCollaborator(classId, {
+          codigo: eventUser.codigo,
+          nombre: eventUser.nombre,
+          email: eventUser.email,
+          lastActiveAt: Date.now(),
+        })
+
+        if (collaboratorTimeoutsRef.current[classId]) {
+          window.clearTimeout(collaboratorTimeoutsRef.current[classId])
+        }
+
+        collaboratorTimeoutsRef.current[classId] = window.setTimeout(() => {
+          clearNodeCollaborator(classId)
+        }, 5000)
+      }
+
+      setNodes((current) => {
+        const nextNodes = current.map((node) => (node.id === classId ? { ...node, position: { x: position.x!, y: position.y! } } : node))
+        queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
+        return nextNodes
+      })
+      return
+    }
+
+    if (event.type === 'class_created' || event.type === 'class_updated') {
+      const incomingNode = payload.node as ClassFlowNode | undefined
+      if (!incomingNode?.id) {
+        return
+      }
+
+      setNodes((current) => {
+        const exists = current.some((node) => node.id === incomingNode.id)
+        const nextNode = {
+          ...incomingNode,
+          style: getClassNodeStyle(incomingNode.data, incomingNode.style, incomingNode.width, incomingNode.height),
+        }
+        const nextNodes = exists ? current.map((node) => (node.id === incomingNode.id ? nextNode : node)) : [...current, nextNode]
+        queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
+        return nextNodes
+      })
+      return
+    }
+
+    if (event.type === 'class_deleted') {
+      const classId = String(payload.class_id ?? '')
+      if (!classId) {
+        return
+      }
+
+      setNodes((current) => {
+        const nextNodes = current.filter((node) => node.id !== classId)
+        setEdges((currentEdges) => {
+          const nextEdges = currentEdges.filter((edge) => edge.source !== classId && edge.target !== classId && edge.data?.associationClassId !== classId)
+          queueMicrotask(() => setDiagramState(nextNodes, nextEdges))
+          return nextEdges
+        })
+        return nextNodes
+      })
+      return
+    }
+
+    if (event.type === 'relation_created' || event.type === 'relation_updated') {
+      const incomingEdge = payload.edge as ClassFlowEdge | undefined
+      if (!incomingEdge?.id) {
+        return
+      }
+
+      setEdges((current) => {
+        const relationType = normalizeRelationType(incomingEdge.data?.relationType)
+        const nextEdge = { ...incomingEdge, ...getRelationEdgeProps(relationType) }
+        const exists = current.some((edge) => edge.id === incomingEdge.id)
+        const nextEdges = exists ? current.map((edge) => (edge.id === incomingEdge.id ? nextEdge : edge)) : [...current, nextEdge]
+        queueMicrotask(() => setDiagramState(nodesRef.current, nextEdges))
+        return nextEdges
+      })
+      return
+    }
+
+    if (event.type === 'relation_deleted') {
+      const relationId = String(payload.relation_id ?? '')
+      if (!relationId) {
+        return
+      }
+
+      setEdges((current) => {
+        const nextEdges = current.filter((edge) => edge.id !== relationId)
+        queueMicrotask(() => setDiagramState(nodesRef.current, nextEdges))
+        return nextEdges
+      })
+      return
+    }
+
+    if (event.type === 'diagram_reloaded') {
+      const content = payload.contenido as DiagramContent | undefined
+      if (!content) {
+        return
+      }
+
+      const nextNodes = toFlowNodes(content.nodes)
+      const nextEdges = toFlowEdges(content.edges)
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      setDiagramState(nextNodes, nextEdges)
+      return
+    }
+
+    if (event.type === 'comment_created') {
+      const comment = (payload.comentario ?? payload.comment ?? payload) as Comentario
+      if (comment?.id) {
+        addComentario(comment)
+      }
+      return
+    }
+
+    if (event.type === 'comment_updated' || event.type === 'comment_resolved') {
+      const comment = (payload.comentario ?? payload.comment ?? payload) as Comentario
+      if (comment?.id) {
+        updateComentario(comment)
+      }
+      return
+    }
+
+    if (event.type === 'comment_deleted') {
+      const commentId = Number(payload.comentario_id ?? payload.comment_id ?? payload.id)
+      if (commentId) {
+        removeComentario(commentId)
+      }
+      return
+    }
   }
 
   useEffect(() => {
@@ -457,6 +740,32 @@ export function EstudiantePage({
     setRelationTargetId((current) => current || nodes[1]?.id || nodes[0].id)
   }, [nodes])
 
+  useEffect(() => {
+    if (!selectedDiagrama?.id) {
+      disconnectDiagramSocket()
+      setActiveRealtimeUsers([])
+      setRealtimeStatus('disconnected')
+      setComentarios([])
+      return
+    }
+
+    setRealtimeStatus('connecting')
+    setActiveRealtimeUsers([])
+    connectDiagramSocket(selectedDiagrama.id, {
+      onOpen: () => setRealtimeStatus('connected'),
+      onClose: () => setRealtimeStatus('disconnected'),
+      onEvent: applyRealtimeEvent,
+      onReconnectFailed: () => {
+        setRealtimeStatus('disconnected')
+        setError('Tiempo real desconectado')
+      },
+    })
+
+    return () => {
+      disconnectDiagramSocket()
+    }
+  }, [selectedDiagrama?.id])
+
   const loadProyectos = useCallback(async () => {
     if (!userProfile?.codigo) {
       setError('No se encontro el codigo del usuario en la sesion.')
@@ -469,6 +778,17 @@ export function EstudiantePage({
     try {
       const data = await listarProyectosPorUsuario(userProfile.codigo)
       setProyectos(data)
+      const pendingOpen = sessionStorage.getItem('drawschema:open-diagram')
+
+      if (pendingOpen) {
+        sessionStorage.removeItem('drawschema:open-diagram')
+        const parsed = JSON.parse(pendingOpen) as { proyectoId?: number; diagramaId?: number }
+        const targetProject = data.find((proyecto) => proyecto.id === parsed.proyectoId)
+
+        if (targetProject && parsed.diagramaId) {
+          await openProyecto(targetProject, parsed.diagramaId)
+        }
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar tus proyectos')
     } finally {
@@ -511,7 +831,7 @@ export function EstudiantePage({
     await loadMiembros(proyecto.id)
   }
 
-  async function openProyecto(proyecto: Proyecto) {
+  async function openProyecto(proyecto: Proyecto, preferredDiagramaId?: number) {
     setSelectedProyecto(proyecto)
     setSelectedDiagrama(null)
     setMiembros([])
@@ -536,7 +856,8 @@ export function EstudiantePage({
       setDiagramas(data)
 
       if (data.length > 0) {
-        await openDiagrama(data[0].id)
+        const targetDiagrama = data.find((diagrama) => diagrama.id === preferredDiagramaId) ?? data[0]
+        await openDiagrama(targetDiagrama.id)
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los diagramas')
@@ -678,6 +999,13 @@ export function EstudiantePage({
       setSelectedNodeId('')
       setSelectedEdgeId('')
       setStoredSelectedRelationId('')
+
+      try {
+        const comentarios = await listarComentarios(diagramaId)
+        setComentarios(comentarios)
+      } catch {
+        // No bloquear la apertura si fallan los comentarios
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudo abrir el diagrama')
     }
@@ -765,6 +1093,68 @@ export function EstudiantePage({
     }
   }
 
+  function getXmiDiagramName(file: File) {
+    return file.name.replace(/\.(xmi|xml)$/i, '').trim() || 'Diagrama importado'
+  }
+
+  async function importXmiFile(file: File) {
+    if (!selectedProyecto) {
+      setError('Selecciona un proyecto antes de importar XMI.')
+      return
+    }
+
+    if (!canEditDiagram) {
+      denyDiagramEdit()
+      return
+    }
+
+    setIsXmiBusy(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const diagrama = await importarXmiEnProyecto(selectedProyecto.id, file, getXmiDiagramName(file))
+
+      setDiagramas((current) => [diagrama, ...current.filter((item) => item.id !== diagrama.id)])
+      await openDiagrama(diagrama.id)
+      setMessage('Archivo XMI importado correctamente.')
+    } catch (importError) {
+      setError(getProjectActionError(importError, 'No se pudo importar el archivo XMI'))
+    } finally {
+      setIsXmiBusy(false)
+    }
+  }
+
+  async function exportSelectedXmi() {
+    if (!selectedDiagrama) {
+      setError('Abre un diagrama antes de exportar XMI.')
+      return
+    }
+
+    setIsXmiBusy(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const blob = await exportarDiagramaXmi(selectedDiagrama.id)
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+
+      anchor.href = url
+      anchor.download = `${selectedDiagrama.nombre.replace(/\s+/g, '_') || 'diagrama'}.xmi`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.URL.revokeObjectURL(url)
+
+      setMessage('Archivo XMI exportado correctamente.')
+    } catch (exportError) {
+      setError(getProjectActionError(exportError, 'No se pudo exportar el archivo XMI'))
+    } finally {
+      setIsXmiBusy(false)
+    }
+  }
+
   async function addClass() {
     if (!selectedDiagrama) {
       setError('Crea o abre un diagrama antes de agregar clases.')
@@ -803,11 +1193,15 @@ export function EstudiantePage({
       const content = normalizeContent(diagrama.contenido)
       const nextNodes = toFlowNodes(content.nodes)
       const nextEdges = toFlowEdges(content.edges)
+      const createdNode = nextNodes.find((node) => !nodes.some((currentNode) => currentNode.id === node.id))
 
       setSelectedDiagrama(diagrama)
       setNodes(nextNodes)
       setEdges(nextEdges)
       setDiagramState(nextNodes, nextEdges)
+      if (createdNode) {
+        sendRealtimeEvent('class_created', { node: createdNode })
+      }
       setNewClassName('Cliente')
       setNewAttributeName('id')
       setNewAttributeType('BIGINT')
@@ -834,16 +1228,21 @@ export function EstudiantePage({
       node.id === selectedNode.id
         ? {
             ...node,
+            style: getClassNodeStyle(nextData, node.style, node.width, node.height),
             data: nextData,
           }
         : node,
     )
 
     await saveDiagrama(nextNodes, edges)
+    const updatedNode = nextNodes.find((node) => node.id === selectedNode.id)
+    if (updatedNode) {
+      sendRealtimeEvent('class_updated', { node: updatedNode })
+    }
     setSelectedNodeId(selectedNode.id)
   }
 
-  async function saveDiagrama(nextNodes = nodes, nextEdges = edges) {
+  async function saveDiagrama(nextNodes = nodes, nextEdges = edges, options?: { broadcastSaved?: boolean }) {
     if (!selectedDiagrama) {
       return
     }
@@ -872,6 +1271,13 @@ export function EstudiantePage({
       setEdges(persistedEdges)
       setDiagramState(persistedNodes, persistedEdges)
       setDiagramas((current) => current.map((item) => (item.id === diagrama.id ? diagrama : item)))
+      if (options?.broadcastSaved) {
+        sendRealtimeEvent('diagram_saved', {
+          diagrama_id: diagrama.id,
+          nombre: diagrama.nombre,
+          version: diagrama.version,
+        })
+      }
       setMessage('Diagrama guardado correctamente.')
     } catch (saveError) {
       setError(getProjectActionError(saveError, 'No se pudo guardar el diagrama'))
@@ -959,6 +1365,13 @@ export function EstudiantePage({
         : 'Relacion creada y guardada.',
     )
     await saveDiagrama(nextNodes, nextEdges)
+    if (associationClassNode) {
+      sendRealtimeEvent('class_created', { node: associationClassNode })
+    }
+    const createdRelation = nextEdges.find((edge) => edge.id === relationId)
+    if (createdRelation) {
+      sendRealtimeEvent('relation_created', { edge: createdRelation })
+    }
   }
 
   async function createRelationFromPanel() {
@@ -1044,6 +1457,10 @@ export function EstudiantePage({
         : 'Relacion creada y guardada.',
     )
     await saveDiagrama(nextNodes, nextEdges)
+    if (associationClassNode) {
+      sendRealtimeEvent('class_created', { node: associationClassNode })
+    }
+    sendRealtimeEvent('relation_created', { edge: nextEdge })
   }
 
   function updateSelectedClassDraft(nextData: ClassNodeData) {
@@ -1061,6 +1478,7 @@ export function EstudiantePage({
         node.id === selectedNode.id
           ? {
               ...node,
+              style: getClassNodeStyle(nextData, node.style, node.width, node.height),
               data: nextData,
             }
           : node,
@@ -1106,6 +1524,10 @@ export function EstudiantePage({
     setEdges(nextEdges)
     setDiagramState(nextNodes, nextEdges)
     await saveDiagrama(nextNodes, nextEdges)
+    sendRealtimeEvent('class_deleted', { class_id: selectedNode.id })
+    associationClassIdsToRemove.forEach((classId) => {
+      sendRealtimeEvent('class_deleted', { class_id: classId })
+    })
   }
 
   const removeSelectedClassRef = useRef(removeSelectedClass)
@@ -1318,6 +1740,15 @@ export function EstudiantePage({
       )
     }
     await saveDiagrama(nextNodes, nextEdges)
+    if (associationClassNode) {
+      sendRealtimeEvent('class_created', { node: associationClassNode })
+    }
+    if (currentData.associationClassId && relationType !== 'associationClass') {
+      sendRealtimeEvent('class_deleted', { class_id: currentData.associationClassId })
+    }
+    if (updatedRelation) {
+      sendRealtimeEvent('relation_updated', { edge: updatedRelation })
+    }
   }
 
   async function updateRelationCardinality(
@@ -1358,6 +1789,9 @@ export function EstudiantePage({
       )
     }
     await saveDiagrama(nodes, nextEdges)
+    if (updatedRelation) {
+      sendRealtimeEvent('relation_updated', { edge: updatedRelation })
+    }
   }
 
   async function invertRelationDirection(edgeId: string) {
@@ -1441,6 +1875,9 @@ export function EstudiantePage({
       )
     }
     await saveDiagrama(nodes, nextEdges)
+    if (updatedRelation) {
+      sendRealtimeEvent('relation_updated', { edge: updatedRelation })
+    }
   }
 
   async function removeRelation(edgeId: string) {
@@ -1462,6 +1899,31 @@ export function EstudiantePage({
     setStoredSelectedRelationId('')
     removeStoredRelation(edgeId, createDiagramEvent('RELATION_DELETED', edgeId, userProfile?.codigo))
     await saveDiagrama(nextNodes, nextEdges)
+    sendRealtimeEvent('relation_deleted', { relation_id: edgeId })
+    if (typeof associationClassId === 'string') {
+      sendRealtimeEvent('class_deleted', { class_id: associationClassId })
+    }
+  }
+
+  const sendNodeMoveRealtime: OnNodeDrag<ClassFlowNode> = (_event, node) => {
+    if (!selectedDiagrama || !canEditDiagram) {
+      return
+    }
+
+    const now = Date.now()
+
+    if (now - lastRealtimeMoveAtRef.current < 90) {
+      return
+    }
+
+    lastRealtimeMoveAtRef.current = now
+    sendRealtimeEvent('class_moved', {
+      class_id: node.id,
+      position: {
+        x: node.position.x,
+        y: node.position.y,
+      },
+    })
   }
 
   const saveNodePosition: OnNodeDrag<ClassFlowNode> = async (_event, node) => {
@@ -1489,6 +1951,13 @@ export function EstudiantePage({
       setEdges(nextEdges)
       setDiagramState(nextNodes, nextEdges)
       setDiagramas((current) => current.map((item) => (item.id === diagrama.id ? diagrama : item)))
+      sendRealtimeEvent('class_moved', {
+        class_id: node.id,
+        position: {
+          x: node.position.x,
+          y: node.position.y,
+        },
+      })
     } catch (moveError) {
       setError(getProjectActionError(moveError, 'No se pudo mover la clase'))
     }
@@ -1602,7 +2071,7 @@ export function EstudiantePage({
     <main
       className={`users-page student-page ${theme === 'light' ? 'users-page-light' : ''} ${
         isSidebarCollapsed ? 'student-sidebar-collapsed' : ''
-      }`}
+      } ${!isAssistantVisible ? 'diagram-assistant-hidden' : ''}`}
     >
       <aside className="admin-sidebar student-sidebar" aria-label="Navegacion de estudiante">
         <button
@@ -1703,11 +2172,23 @@ export function EstudiantePage({
               </div>
 
               <div className="student-panel">
-                <div className="panel-title">
+                <div className="panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <p>Proyectos</p>
                     <h2>Abre tu diagramador</h2>
                   </div>
+                  <button
+                    className="join-project-trigger-btn"
+                    onClick={() => {
+                      setUrlInviteCode('')
+                      setIsJoinModalOpen(true)
+                    }}
+                    type="button"
+                    title="Unirse a un proyecto mediante código de invitación"
+                  >
+                    <UserPlus size={16} />
+                    <span>Unirse con código</span>
+                  </button>
                 </div>
 
                 <div className="student-project-grid">
@@ -1728,6 +2209,16 @@ export function EstudiantePage({
                         <button onClick={() => openCollaborators(proyecto)} type="button">
                           <Plus size={16} /> Colaboradores
                         </button>
+                        <button
+                          onClick={() => {
+                            setInviteTargetProyecto({ id: proyecto.id, nombre: proyecto.nombre })
+                            setIsInviteModalOpen(true)
+                          }}
+                          type="button"
+                          title="Obtener código de invitación"
+                        >
+                          <Share2 size={15} /> Invitar
+                        </button>
                       </div>
                     </article>
                   ))}
@@ -1744,15 +2235,29 @@ export function EstudiantePage({
                         <p>Colaboradores</p>
                         <h2>{selectedProyecto.nombre}</h2>
                       </div>
-                      <button
-                        className="icon-button"
-                        disabled={isMembersLoading}
-                        onClick={() => loadMiembros(selectedProyecto.id)}
-                        title="Recargar colaboradores"
-                        type="button"
-                      >
-                        <RefreshCw size={15} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          className="invite-collaborators-code-btn"
+                          onClick={() => {
+                            setInviteTargetProyecto({ id: selectedProyecto.id, nombre: selectedProyecto.nombre })
+                            setIsInviteModalOpen(true)
+                          }}
+                          type="button"
+                          title="Compartir código de invitación"
+                        >
+                          <Share2 size={15} />
+                          <span>Código de invitación</span>
+                        </button>
+                        <button
+                          className="icon-button"
+                          disabled={isMembersLoading}
+                          onClick={() => loadMiembros(selectedProyecto.id)}
+                          title="Recargar colaboradores"
+                          type="button"
+                        >
+                          <RefreshCw size={15} />
+                        </button>
+                      </div>
                     </div>
 
                     {membersError ? <p className="collaborators-message error">{membersError}</p> : null}
@@ -1868,19 +2373,178 @@ export function EstudiantePage({
                 <h1>{selectedProyecto?.nombre ?? 'Proyecto'}</h1>
               </div>
               <div className="diagrammer-header-actions">
+                <div className="diagram-header-file-actions">
+                  <button
+                    className={isAssistantVisible ? 'file-toolbar-button assistant-toggle active' : 'file-toolbar-button assistant-toggle'}
+                    onClick={() => setIsAssistantVisible((current) => !current)}
+                    type="button"
+                  >
+                    <Sparkles size={16} />
+                    {isAssistantVisible ? 'Ocultar asistente' : 'Mostrar asistente'}
+                  </button>
+
+                  <button
+                    className={isCommentsOpen ? 'file-toolbar-button comments-toggle active' : 'file-toolbar-button comments-toggle'}
+                    disabled={!selectedDiagrama}
+                    onClick={toggleCommentsDrawer}
+                    title="Comentarios y discusión del diagrama"
+                    type="button"
+                  >
+                    <MessageSquare size={16} />
+                    Comentarios
+                    {totalPendingComments > 0 ? (
+                      <span
+                        className="comments-pending-count-badge"
+                        style={{
+                          marginLeft: 6,
+                          padding: '1px 6px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          borderRadius: '999px',
+                          backgroundColor: '#6366f1',
+                          color: '#ffffff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {totalPendingComments}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  <button
+                    className="file-toolbar-button"
+                    disabled={!selectedDiagrama}
+                    onClick={() => {
+                      if (selectedDiagrama) {
+                        onVersionHistory(selectedDiagrama)
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Clock3 size={16} />
+                    Ver historial
+                  </button>
+
+                  {selectedProyecto ? (
+                    <button
+                      className="file-toolbar-button invite-toolbar-btn"
+                      onClick={() => {
+                        setInviteTargetProyecto({ id: selectedProyecto.id, nombre: selectedProyecto.nombre })
+                        setIsInviteModalOpen(true)
+                      }}
+                      title="Invitar colaboradores mediante código"
+                      type="button"
+                    >
+                      <Share2 size={16} />
+                      Invitar
+                    </button>
+                  ) : null}
+
+                  <label className={!canEditDiagram || isXmiBusy || !selectedProyecto ? 'file-toolbar-button disabled' : 'file-toolbar-button'}>
+                    <Upload size={16} />
+                    Importar
+                    <input
+                      accept=".xmi,.xml"
+                      disabled={!canEditDiagram || isXmiBusy || !selectedProyecto}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+
+                        if (file) {
+                          importXmiFile(file)
+                        }
+
+                        event.target.value = ''
+                      }}
+                      type="file"
+                    />
+                  </label>
+
+                  <button
+                    className="file-toolbar-button"
+                    disabled={!selectedDiagrama || isXmiBusy}
+                    onClick={exportSelectedXmi}
+                    type="button"
+                  >
+                    <Download size={16} />
+                    Exportar
+                  </button>
+                </div>
+
                 {selectedProyecto ? (
                   <span className={canViewOnly ? 'project-role-badge view-only' : 'project-role-badge'}>
                     {miembroActual ? getMemberRoleName(miembroActual.id_rol) : 'Cargando rol'}
                   </span>
                 ) : null}
-                <button
-                  className="primary-action diagrammer-save"
-                  disabled={!selectedDiagrama || isSaving || !canEditDiagram}
-                  onClick={() => saveDiagrama()}
-                  type="button"
-                >
-                  <Save size={18} /> {isSaving ? 'Guardando...' : 'Guardar'}
-                </button>
+                {selectedDiagrama ? (
+                  <div className={`realtime-users realtime-${realtimeStatus}`} title="Colaboradores activos">
+                    <div className="realtime-avatars" aria-label="Colaboradores activos">
+                      {activeRealtimeUsers.slice(0, 4).map((user) => {
+                        const userColor = getCollaboratorColor(user.codigo || user.email || user.nombre)
+                        const userInitials = getCollaboratorInitials(user)
+                        const displayName = user.nombre || user.email || user.codigo || 'Colaborador'
+                        return (
+                          <div
+                            className="realtime-avatar-wrapper"
+                            key={user.codigo ?? user.email ?? user.nombre}
+                          >
+                            <span
+                              className="realtime-avatar"
+                              style={{
+                                backgroundColor: userColor.bg,
+                                color: userColor.text,
+                                borderColor: userColor.border,
+                              }}
+                              title={`${displayName}\n${user.email || ''}\n${user.can_edit ? 'Editor' : 'Visualizador'}`}
+                            >
+                              {userInitials}
+                            </span>
+                            <div className="realtime-avatar-tooltip">
+                              <div className="realtime-avatar-tooltip-header">
+                                <span
+                                  className="avatar-tooltip-circle"
+                                  style={{ backgroundColor: userColor.bg, color: userColor.text }}
+                                >
+                                  {userInitials}
+                                </span>
+                                <div>
+                                  <strong>{displayName}</strong>
+                                  {user.email ? <span>{user.email}</span> : null}
+                                </div>
+                              </div>
+                              <div className="realtime-avatar-tooltip-footer">
+                                <span className="avatar-status-dot" style={{ backgroundColor: userColor.border }} />
+                                <small>{user.can_edit ? 'Modo Editor' : 'Visualizador'} • En línea</small>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {activeRealtimeUsers.length > 4 ? (
+                        <span className="realtime-avatar realtime-more">+{activeRealtimeUsers.length - 4}</span>
+                      ) : null}
+                    </div>
+                    <span>
+                      {realtimeStatus === 'connected'
+                        ? activeRealtimeUsers.length > 0
+                          ? 'En vivo'
+                          : 'Solo tu'
+                        : realtimeStatus === 'connecting'
+                          ? 'Conectando'
+                          : 'Sin tiempo real'}
+                    </span>
+                  </div>
+                ) : null}
+                {selectedProyecto && selectedDiagrama ? (
+                  <AiCodegenPanel
+                    diagramaId={selectedDiagrama.id}
+                    proyectoId={selectedProyecto.id}
+                    proyectoNombre={selectedProyecto.nombre}
+                    variant="button"
+                  />
+                ) : null}
               </div>
             </header>
 
@@ -1892,20 +2556,6 @@ export function EstudiantePage({
 
             <section className="diagrammer-shell">
               <aside className="diagrammer-left-panel">
-                <DiagramListPanel
-                  canEditDiagram={canEditDiagram}
-                  createDiagrama={createDiagrama}
-                  diagramas={diagramas}
-                  formatDate={formatDate}
-                  isSaving={isSaving}
-                  newDiagramName={newDiagramName}
-                  openDiagrama={openDiagrama}
-                  removeDiagrama={removeDiagrama}
-                  selectedDiagrama={selectedDiagrama}
-                  selectedProyecto={selectedProyecto}
-                  setNewDiagramName={setNewDiagramName}
-                />
-
                 <RelationBuilderPanel
                   canEditDiagram={canEditDiagram}
                   createRelationFromPanel={createRelationFromPanel}
@@ -1932,9 +2582,64 @@ export function EstudiantePage({
                   updateRelation={updateRelation}
                   updateRelationCardinality={updateRelationCardinality}
                 />
+
               </aside>
 
               <section className="diagram-flow-panel">
+                <div className="diagram-file-toolbar">
+                  <div className="diagram-picker">
+                    <label>
+                      Diagrama
+                      <select
+                        disabled={diagramas.length === 0}
+                        onChange={(event) => openDiagrama(Number(event.target.value))}
+                        value={selectedDiagrama?.id ?? ''}
+                      >
+                        <option value="" disabled>
+                          Selecciona un diagrama
+                        </option>
+                        {diagramas.map((diagrama) => (
+                          <option key={diagrama.id} value={diagrama.id}>
+                            {diagrama.nombre} - v{diagrama.version}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="diagram-new-inline">
+                      <input
+                        disabled={!canEditDiagram || !selectedProyecto}
+                        onChange={(event) => setNewDiagramName(event.target.value)}
+                        placeholder="Nuevo diagrama"
+                        value={newDiagramName}
+                      />
+                      <button
+                        className="icon-button"
+                        disabled={isSaving || !selectedProyecto || !canEditDiagram || !newDiagramName.trim()}
+                        onClick={createDiagrama}
+                        title="Crear diagrama"
+                        type="button"
+                      >
+                        <Plus size={17} />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        disabled={!selectedDiagrama || !canEditDiagram}
+                        onClick={() => {
+                          if (selectedDiagrama) {
+                            removeDiagrama(selectedDiagrama)
+                          }
+                        }}
+                        title="Eliminar diagrama"
+                        type="button"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
                 <div className="diagram-canvas-topbar">
                   <label>
                     Nombre
@@ -1983,6 +2688,7 @@ export function EstudiantePage({
                   edges={edges}
                   nodes={nodes}
                   onEdgesChange={onEdgesChange}
+                  onNodeDrag={sendNodeMoveRealtime}
                   onNodesChange={onNodesChange}
                   saveNodePosition={saveNodePosition}
                   selectedDiagrama={selectedDiagrama}
@@ -2037,19 +2743,67 @@ export function EstudiantePage({
                 />
               </section>
 
-              <aside className="diagrammer-right-panel">
-                <DiagramAssistantPanel
-                  canEditDiagram={canEditDiagram}
-                  onDiagramUpdated={handleAiDiagramUpdated}
-                  selectedDiagrama={selectedDiagrama}
-                  selectedProyecto={selectedProyecto}
-                  userProfile={userProfile}
+              {isAssistantVisible ? (
+                <aside className="diagrammer-right-panel">
+                  <DiagramAssistantPanel
+                    canEditDiagram={canEditDiagram}
+                    isAssistantVisible={isAssistantVisible}
+                    onDiagramUpdated={handleAiDiagramUpdated}
+                    selectedDiagrama={selectedDiagrama}
+                    selectedProyecto={selectedProyecto}
+                    userProfile={userProfile}
+                  />
+                </aside>
+              ) : null}
+
+              {selectedDiagrama ? (
+                <CommentsDrawer
+                  canEdit={canEditDiagram}
+                  currentUserCodigo={userProfile?.codigo}
+                  diagramaId={selectedDiagrama.id}
+                  nodes={nodes}
+                  onCommentMutated={(type, payload) => {
+                    sendRealtimeEvent(type, payload)
+                  }}
+                  onSelectNode={(nodeId) => {
+                    setSelectedNodeId(nodeId)
+                    setSelectedEdgeId('')
+                    setStoredSelectedRelationId('')
+                  }}
+                  theme={theme}
                 />
-              </aside>
+              ) : null}
             </section>
           </>
         )}
       </section>
+      {inviteTargetProyecto ? (
+        <InviteModal
+          isOpen={isInviteModalOpen}
+          onClose={() => {
+            setIsInviteModalOpen(false)
+            setInviteTargetProyecto(null)
+          }}
+          proyectoId={inviteTargetProyecto.id}
+          proyectoNombre={inviteTargetProyecto.nombre}
+          theme={theme}
+        />
+      ) : null}
+
+      <JoinProjectModal
+        initialCode={urlInviteCode}
+        isOpen={isJoinModalOpen}
+        onClose={() => {
+          setIsJoinModalOpen(false)
+          setUrlInviteCode('')
+        }}
+        onSuccess={async (nuevoProyecto) => {
+          setMessage(`¡Te has unido a "${nuevoProyecto.nombre}" con éxito!`)
+          await loadProyectos()
+          openProyecto(nuevoProyecto)
+        }}
+        theme={theme}
+      />
     </main>
   )
 }

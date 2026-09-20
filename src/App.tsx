@@ -22,6 +22,8 @@ import { EstudiantePage } from './pages/estudiante/EstudiantePage'
 import { IAPage } from './pages/IA/IA'
 import { PerfilPage } from './pages/perfil/PerfilPage'
 import { UsuariosPage } from './pages/usuario/UsuariosPage'
+import { VersionHistoryPage } from './pages/versiones/VersionHistoryPage'
+import type { DiagramaResponse } from './services/diagramaService'
 import type { AuthUserProfile } from './utils/auth'
 import { getStoredToken, getUserProfileFromToken, isStudentToken, isSuperAdminToken } from './utils/auth'
 import './App.css'
@@ -114,15 +116,59 @@ const activityMessages = [
   'Jose comento tasks.status',
   'Mia exporto el SQL',
 ]
+
+type AppPage = 'landing' | 'login' | 'usuarios' | 'proyectos' | 'perfil' | 'estudiante' | 'ia' | 'historialVersiones'
+
+const pagePaths: Record<AppPage, string> = {
+  landing: '/',
+  login: '/login',
+  usuarios: '/usuarios',
+  proyectos: '/proyectos',
+  perfil: '/perfil',
+  estudiante: '/estudiante',
+  ia: '/ia',
+  historialVersiones: '/historial-versiones',
+}
+
+function getPageFromPath(pathname: string): AppPage {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
+  const match = Object.entries(pagePaths).find(([_page, path]) => path === normalizedPath)
+
+  return (match?.[0] as AppPage | undefined) ?? 'landing'
+}
   
 function App() {
   const [activeTable, setActiveTable] = useState(1)
   const [activityIndex, setActivityIndex] = useState(0)
-  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'usuarios' | 'proyectos' | 'perfil' | 'estudiante' | 'ia'>('landing')
+  const [currentPage, setCurrentPage] = useState<AppPage>(() => getPageFromPath(window.location.pathname))
   const [theme, setTheme] = useState<'dark' | 'light'>('light')
   const [authToken, setAuthToken] = useState<string | null>(() => getStoredToken())
   const [profileOverride, setProfileOverride] = useState<AuthUserProfile | null>(null)
   const userProfile = profileOverride ?? getUserProfileFromToken(authToken)
+
+  function navigateTo(page: AppPage, options?: { replace?: boolean }) {
+    const path = pagePaths[page]
+
+    if (window.location.pathname !== path) {
+      if (options?.replace) {
+        window.history.replaceState(null, '', path)
+      } else {
+        window.history.pushState(null, '', path)
+      }
+    }
+
+    setCurrentPage(page)
+  }
+
+  function navigateToVersionHistory(diagrama: DiagramaResponse) {
+    const params = new URLSearchParams({
+      diagrama_id: String(diagrama.id),
+      proyecto_id: String(diagrama.id_proyecto),
+      nombre: diagrama.nombre,
+    })
+    window.history.pushState(null, '', `${pagePaths.historialVersiones}?${params.toString()}`)
+    setCurrentPage('historialVersiones')
+  }
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -133,13 +179,41 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [])
 
+  useEffect(() => {
+    const currentPathPage = getPageFromPath(window.location.pathname)
+    const currentPath = pagePaths[currentPathPage]
+
+    if (window.location.pathname !== currentPath) {
+      window.history.replaceState(null, '', currentPath)
+    }
+
+    function handleBrowserNavigation() {
+      setCurrentPage(getPageFromPath(window.location.pathname))
+    }
+
+    window.addEventListener('popstate', handleBrowserNavigation)
+
+    return () => window.removeEventListener('popstate', handleBrowserNavigation)
+  }, [])
+
   function handleLoginSuccess(token: string) {
     const hasSuperAdminAccess = isSuperAdminToken(token)
     const hasStudentAccess = isStudentToken(token)
 
     setAuthToken(token)
     setProfileOverride(null)
-    setCurrentPage(hasSuperAdminAccess ? 'usuarios' : hasStudentAccess ? 'estudiante' : 'landing')
+    navigateTo(hasSuperAdminAccess ? 'usuarios' : hasStudentAccess ? 'estudiante' : 'landing', { replace: true })
+  }
+
+  function handleVersionRestored(diagrama: DiagramaResponse) {
+    sessionStorage.setItem(
+      'drawschema:open-diagram',
+      JSON.stringify({
+        diagramaId: diagrama.id,
+        proyectoId: diagrama.id_proyecto,
+      }),
+    )
+    navigateTo('estudiante')
   }
 
   function toggleTheme() {
@@ -150,7 +224,7 @@ function App() {
     return (
       <LoginPage
         theme={theme}
-        onBack={() => setCurrentPage('landing')}
+        onBack={() => navigateTo('landing')}
         onToggleTheme={toggleTheme}
         onLoginSuccess={handleLoginSuccess}
       />
@@ -162,9 +236,9 @@ function App() {
       <UsuariosPage
         theme={theme}
         userProfile={userProfile}
-        onBack={() => setCurrentPage('landing')}
-        onProfile={() => setCurrentPage('perfil')}
-        onProjects={() => setCurrentPage('proyectos')}
+        onBack={() => navigateTo('landing')}
+        onProfile={() => navigateTo('perfil')}
+        onProjects={() => navigateTo('proyectos')}
         onToggleTheme={toggleTheme}
       />
     )
@@ -175,10 +249,10 @@ function App() {
       <ProyectosPage
         theme={theme}
         userProfile={userProfile}
-        onBack={() => setCurrentPage('landing')}
-        onProfile={() => setCurrentPage('perfil')}
+        onBack={() => navigateTo('landing')}
+        onProfile={() => navigateTo('perfil')}
         onToggleTheme={toggleTheme}
-        onUsers={() => setCurrentPage('usuarios')}
+        onUsers={() => navigateTo('usuarios')}
       />
     )
   }
@@ -188,9 +262,10 @@ function App() {
       <EstudiantePage
         theme={theme}
         userProfile={userProfile}
-        onBack={() => setCurrentPage('landing')}
-        onProfile={() => setCurrentPage('perfil')}
+        onBack={() => navigateTo('landing')}
+        onProfile={() => navigateTo('perfil')}
         onToggleTheme={toggleTheme}
+        onVersionHistory={navigateToVersionHistory}
       />
     )
   }
@@ -203,18 +278,29 @@ function App() {
         isStudentProfile={isStudentProfile}
         theme={theme}
         userProfile={userProfile}
-        onBack={() => setCurrentPage('landing')}
+        onBack={() => navigateTo('landing')}
         onProfileUpdated={setProfileOverride}
-        onProjects={() => setCurrentPage('proyectos')}
-        onStudentHome={() => setCurrentPage('estudiante')}
+        onProjects={() => navigateTo('proyectos')}
+        onStudentHome={() => navigateTo('estudiante')}
         onToggleTheme={toggleTheme}
-        onUsers={() => setCurrentPage('usuarios')}
+        onUsers={() => navigateTo('usuarios')}
       />
     )
   }
 
   if (currentPage === 'ia') {
     return <IAPage theme={theme} userProfile={userProfile} />
+  }
+
+  if (currentPage === 'historialVersiones') {
+    return (
+      <VersionHistoryPage
+        theme={theme}
+        userProfile={userProfile}
+        onBack={() => navigateTo('estudiante')}
+        onRestored={handleVersionRestored}
+      />
+    )
   }
 
   return (
@@ -238,7 +324,7 @@ function App() {
           <a href="#how">Como funciona</a>
           <a href="#teams">Para equipos</a>
           <a href="#pricing">Precios</a>
-          <button className="nav-link-button" onClick={() => setCurrentPage('login')} type="button">
+          <button className="nav-link-button" onClick={() => navigateTo('login')} type="button">
             Iniciar sesion
           </button>
         </nav>

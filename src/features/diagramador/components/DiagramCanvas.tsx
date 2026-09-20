@@ -67,6 +67,7 @@ type DiagramCanvasProps = {
   theme: 'dark' | 'light'
   connectNodes: OnConnect
   onEdgesChange: OnEdgesChange<ClassFlowEdge>
+  onNodeDrag: OnNodeDrag<ClassFlowNode>
   onNodesChange: OnNodesChange<ClassFlowNode>
   saveNodePosition: OnNodeDrag<ClassFlowNode>
   setSelectedEdgeId: (edgeId: string) => void
@@ -80,6 +81,7 @@ export function DiagramCanvas({
   edges,
   nodes,
   onEdgesChange,
+  onNodeDrag,
   onNodesChange,
   saveNodePosition,
   selectedDiagrama,
@@ -113,6 +115,7 @@ export function DiagramCanvas({
           setSelectedNodeId(node.id)
           setSelectedEdgeId('')
         }}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={saveNodePosition}
         onNodesChange={onNodesChange}
         onPaneClick={() => {

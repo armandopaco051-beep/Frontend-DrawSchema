@@ -4,6 +4,8 @@ import type {
   MiembroFormValues,
   ProyectoMiembro,
   ProyectoUpdate,
+  CodigoInvitacionResponse,
+  InvitacionPreviewResponse,
 } from '../models/proyecto'
 import { apiRequest } from './api'
 
@@ -71,3 +73,24 @@ export function quitarMiembro(proyectoId: number, usuarioCodigo: string) {
     },
   )
 }
+
+export function obtenerOCrearCodigoInvitacion(proyectoId: number, forzar = false) {
+  return apiRequest<CodigoInvitacionResponse>(
+    `/proyectos/${proyectoId}/codigo-invitacion${forzar ? '?forzar=true' : ''}`,
+    {
+      method: 'POST',
+    },
+  )
+}
+
+export function vistaPreviaInvitacion(codigo: string) {
+  return apiRequest<InvitacionPreviewResponse>(`/proyectos/invitacion/${encodeURIComponent(codigo.trim().toUpperCase())}`)
+}
+
+export function unirseAProyectoConCodigo(codigo: string) {
+  return apiRequest<Proyecto, { codigo: string }>('/proyectos/unirse', {
+    method: 'POST',
+    body: { codigo: codigo.trim().toUpperCase() },
+  })
+}
+

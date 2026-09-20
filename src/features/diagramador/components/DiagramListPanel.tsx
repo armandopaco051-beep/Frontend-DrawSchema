@@ -1,15 +1,19 @@
-import { FileCode2, Plus, Trash2 } from 'lucide-react'
+import { Clock3, Download, FileCode2, Plus, Trash2, Upload } from 'lucide-react'
 import type { DiagramaResponse } from '../../../services/diagramaService'
 
 type DiagramListPanelProps = {
   canEditDiagram: boolean
   diagramas: DiagramaResponse[]
   isSaving: boolean
+  isXmiBusy: boolean
   newDiagramName: string
   selectedDiagrama: DiagramaResponse | null
   selectedProyecto: unknown
   formatDate: (value?: string | null) => string
   createDiagrama: () => void
+  exportSelectedXmi: () => void
+  importXmiFile: (file: File) => void
+  openVersionHistory: () => void
   openDiagrama: (diagramaId: number) => void
   removeDiagrama: (diagrama: DiagramaResponse) => void
   setNewDiagramName: (value: string) => void
@@ -20,9 +24,13 @@ export function DiagramListPanel({
   createDiagrama,
   diagramas,
   formatDate,
+  exportSelectedXmi,
+  importXmiFile,
   isSaving,
+  isXmiBusy,
   newDiagramName,
   openDiagrama,
+  openVersionHistory,
   removeDiagrama,
   selectedDiagrama,
   selectedProyecto,
@@ -48,6 +56,47 @@ export function DiagramListPanel({
           <Plus size={18} />
         </button>
       </div>
+
+      <div className="xmi-actions" aria-label="Importar y exportar XMI">
+        <label className={!canEditDiagram || isXmiBusy || !selectedProyecto ? 'xmi-action disabled' : 'xmi-action'}>
+          <Upload size={15} />
+          <span>Importar XMI</span>
+          <input
+            accept=".xmi,.xml"
+            disabled={!canEditDiagram || isXmiBusy || !selectedProyecto}
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+
+              if (file) {
+                importXmiFile(file)
+              }
+
+              event.target.value = ''
+            }}
+            type="file"
+          />
+        </label>
+
+        <button
+          className="xmi-action"
+          disabled={!selectedDiagrama || isXmiBusy}
+          onClick={exportSelectedXmi}
+          type="button"
+        >
+          <Download size={15} />
+          <span>Exportar XMI</span>
+        </button>
+      </div>
+
+      <button
+        className="version-history-link"
+        disabled={!selectedDiagrama}
+        onClick={openVersionHistory}
+        type="button"
+      >
+        <Clock3 size={16} />
+        Ver historial de versiones
+      </button>
 
       <div className="diagram-list">
         {diagramas.map((diagrama) => (

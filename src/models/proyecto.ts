@@ -34,3 +34,18 @@ export type MiembroFormValues = {
   usuario_codigo: string
   id_rol: number
 }
+
+export interface CodigoInvitacionResponse {
+  codigo: string
+  expira_en: string
+  dias_restantes: number
+  es_nuevo: boolean
+}
+
+export interface InvitacionPreviewResponse {
+  proyecto_id: number
+  nombre: string
+  descripcion: string | null
+  valido: boolean
+  expira_en: string | null
+}

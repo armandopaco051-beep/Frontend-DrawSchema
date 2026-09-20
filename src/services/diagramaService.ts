@@ -1,4 +1,4 @@
-import { apiRequest } from './api'
+import { API_URL, ApiError, apiRequest } from './api'
 
 export type DiagramNode = {
   id: string
@@ -57,6 +57,24 @@ export type DiagramaResponse = {
   actualizado_en?: string | null
 }
 
+export type VersionHistorialResponse = {
+  id: number
+  diagrama_id: number
+  autor_id: string
+  contenido: DiagramContent
+  version: number
+  fecha: string
+  titulo?: string | null
+  descripcion?: string | null
+  tipo: string
+  autor?: {
+    codigo: string
+    nombres: string
+    apellidos: string
+    email: string
+  } | null
+}
+
 export type ClaseCreate = {
   id?: string
   name: string
@@ -97,6 +115,17 @@ export function listarDiagramasPorProyecto(idProyecto: number) {
 
 export function abrirDiagrama(id: number) {
   return apiRequest<DiagramaResponse>(`/diagramas/${id}`)
+}
+
+export function listarVersionesDiagrama(id: number) {
+  return apiRequest<VersionHistorialResponse[]>(`/diagramas/${id}/versiones`)
+}
+
+export function restaurarVersionDiagrama(id: number, versionId: number, autorCodigo?: string | null) {
+  return apiRequest<DiagramaResponse, { autor_codigo?: string }>(`/diagramas/${id}/versiones/${versionId}/restaurar`, {
+    method: 'POST',
+    body: autorCodigo ? { autor_codigo: autorCodigo } : {},
+  })
 }
 
 export function guardarDiagrama(id: number, diagrama: DiagramaUpdate) {
@@ -142,4 +171,72 @@ export function eliminarClase(diagramaId: number, claseId: string, autorCodigo?:
   return apiRequest<DiagramaResponse>(`/diagramas/${diagramaId}/clases/${claseId}${query}`, {
     method: 'DELETE',
   })
+}
+
+export async function importarXmiEnProyecto(proyectoId: number, file: File, nombre: string) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('nombre', nombre)
+
+  const response = await fetch(`${API_URL}/proyectos/${proyectoId}/diagramas/import/xmi`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    throw new ApiError(
+      data?.detail ?? data?.message ?? 'No se pudo importar el archivo XMI.',
+      response.status,
+      data?.detail,
+    )
+  }
+
+  return data as DiagramaResponse
+}
+
+export async function importarXmiEnDiagrama(diagramaId: number, file: File) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_URL}/diagramas/${diagramaId}/import/xmi`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    throw new ApiError(
+      data?.detail ?? data?.message ?? 'No se pudo importar el archivo XMI.',
+      response.status,
+      data?.detail,
+    )
+  }
+
+  return data as DiagramaResponse
+}
+
+export async function exportarDiagramaXmi(diagramaId: number) {
+  const token = localStorage.getItem('token')
+
+  const response = await fetch(`${API_URL}/diagramas/${diagramaId}/export/xmi`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new ApiError(
+      data?.detail ?? data?.message ?? 'No se pudo exportar el archivo XMI.',
+      response.status,
+      data?.detail,
+    )
+  }
+
+  return response.blob()
 }
