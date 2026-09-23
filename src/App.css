@@ -866,47 +866,29 @@
   .navbar {
     position: static;
     flex-direction: column;
+    width: 100%;
+    padding: 14px 20px;
+    gap: 16px;
   }
 
   .nav-links {
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .hero-section {
-    padding-top: 52px;
+    padding-top: 40px;
   }
 
   .window-topbar {
     grid-template-columns: 1fr;
     padding: 14px;
-  }
-
-  .schema-board {
-    min-height: 640px;
-  }
-
-  .schema-card {
-    width: min(240px, calc(100vw - 56px));
-  }
-
-  .card-users,
-  .card-projects,
-  .card-tasks {
-    left: 22px;
-    right: auto;
-  }
-
-  .card-users {
-    top: 74px;
-  }
-
-  .card-projects {
-    top: 244px;
-  }
-
-  .card-tasks {
-    top: 414px;
   }
 
   .benefit-grid,
@@ -917,6 +899,33 @@
 
   .footer nav {
     flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 620px) {
+  .schema-board {
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 24px 12px;
+  }
+
+  .schema-board svg.connections-svg {
+    display: none;
+  }
+
+  .schema-board .hero-cursor {
+    display: none;
+  }
+
+  .schema-card {
+    position: static !important;
+    width: 100% !important;
+    max-width: 340px;
+    margin: 0 auto;
   }
 }
 
@@ -925,7 +934,15 @@
   .truth-section h2,
   .steps-section h2,
   .final-cta h2 {
-    font-size: 42px;
+    font-size: clamp(26px, 7.5vw, 36px);
+    line-height: 1.18;
+    word-break: break-word;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
   }
 
   .primary-button,
@@ -933,6 +950,12 @@
   .dark-button,
   .nav-cta {
     width: 100%;
+    justify-content: center;
+  }
+
+  .hero-pill,
+  .section-kicker {
+    font-size: 12px;
   }
 }
 

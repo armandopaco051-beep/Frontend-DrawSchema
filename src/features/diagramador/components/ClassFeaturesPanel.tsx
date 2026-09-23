@@ -26,7 +26,7 @@ type ClassFeaturesPanelProps = {
   setNewMethodName: (value: string) => void
   setNewMethodParameters: (value: string) => void
   setNewMethodReturnType: (value: string) => void
-  updateSelectedAttribute: (index: number, key: 'name' | 'type' | 'primaryKey' | 'nullable', value: string | boolean) => void
+  updateSelectedAttribute: (index: number, key: 'name' | 'type' | 'primaryKey' | 'foreignKey' | 'nullable', value: string | boolean) => void
   updateSelectedClassDraft: (data: ClassNodeData) => void
   updateSelectedMethod: (index: number, key: 'name' | 'returnType' | 'parameters', value: string) => void
 }
@@ -121,6 +121,7 @@ export function ClassFeaturesPanel({
             <span>Nombre</span>
             <span>Tipo</span>
             <span>PK</span>
+            <span>FK</span>
             <span>Null</span>
             <span />
           </div>
@@ -141,15 +142,23 @@ export function ClassFeaturesPanel({
                 placeholder="VARCHAR"
                 value={String(attribute.type ?? '')}
               />
-              <label className="mini-check">
+              <label className="mini-check" title="Clave Primaria (PK)">
                 <input
-                  checked={Boolean(attribute.primaryKey)}
+                  checked={Boolean(attribute.primaryKey || (attribute as any).isPrimaryKey)}
                   disabled={!canEditDiagram}
                   onChange={(event) => updateSelectedAttribute(index, 'primaryKey', event.target.checked)}
                   type="checkbox"
                 />
               </label>
-              <label className="mini-check">
+              <label className="mini-check" title="Clave Foránea (FK)">
+                <input
+                  checked={Boolean(attribute.foreignKey || (attribute as any).isForeignKey)}
+                  disabled={!canEditDiagram}
+                  onChange={(event) => updateSelectedAttribute(index, 'foreignKey', event.target.checked)}
+                  type="checkbox"
+                />
+              </label>
+              <label className="mini-check" title="Permite Null">
                 <input
                   checked={Boolean(attribute.nullable)}
                   disabled={!canEditDiagram}
@@ -171,6 +180,7 @@ export function ClassFeaturesPanel({
           <div className="features-grid features-grid-attributes features-new-row">
             <input disabled={!canEditDiagram} onChange={(event) => setNewAttributeName(event.target.value)} placeholder="nombre" value={newAttributeName} />
             <input disabled={!canEditDiagram} onChange={(event) => setNewAttributeType(event.target.value)} placeholder="tipo" value={newAttributeType} />
+            <span />
             <span />
             <span />
             <button className="ghost-button" disabled={isSaving || !canEditDiagram || !newAttributeName.trim()} onClick={addAttributeToSelectedClass} type="button">

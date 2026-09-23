@@ -39,6 +39,8 @@ import { DiagramAssistantPanel } from '../../features/diagramador/components/Dia
 import { DiagramCanvas } from '../../features/diagramador/components/DiagramCanvas'
 import { InviteModal } from '../../features/projects/components/InviteModal'
 import { JoinProjectModal } from '../../features/projects/components/JoinProjectModal'
+import { ToastContainer } from '../../components/ui/ToastNotification'
+import { Toast } from '../../components/ui/toast.store'
 import { RelationBuilderPanel, RelationsPanel } from '../../features/diagramador/components/RelationsPanel'
 import { useCommentStore } from '../../features/comments/store/comment.store'
 import { useDiagramStore } from '../../features/diagrams/store/diagram.store'
@@ -225,14 +227,23 @@ function toFlowNodes(nodes: DiagramNode[]): ClassFlowNode[] {
     const data = {
       ...node.data,
       name: node.data.name,
-      attributes: node.data.attributes as ClassAttribute[],
-      methods: node.data.methods as ClassMethod[],
+      attributes: (node.data.attributes ?? []) as ClassAttribute[],
+      methods: (node.data.methods ?? []) as ClassMethod[],
     }
+
+    const posX =
+      typeof node.position?.x === 'number' && Number.isFinite(node.position.x)
+        ? node.position.x
+        : 120
+    const posY =
+      typeof node.position?.y === 'number' && Number.isFinite(node.position.y)
+        ? node.position.y
+        : 110
 
     return {
       id: node.id,
       type: 'classNode',
-      position: node.position,
+      position: { x: posX, y: posY },
       style: getClassNodeStyle(data, node.style),
       data,
     }
@@ -256,10 +267,118 @@ function toFlowEdges(edges: DiagramEdge[]): ClassFlowEdge[] {
         sourceCardinality: normalizeCardinality(edge.data?.sourceCardinality),
         targetCardinality: normalizeCardinality(edge.data?.targetCardinality),
         createdAt: String(edge.data?.createdAt ?? new Date().toISOString()),
+        createdBy: edge.data?.createdBy as string | undefined,
       },
       ...getRelationEdgeProps(relationType),
     }
   })
+}
+
+function getAssociationClassName(sourceName: string, targetName: string) {
+  return `${sourceName}${targetName}`
+    .replace(/[^a-zA-Z0-9]/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+}
+
+function getPrimaryKeysForAssociation(node: ClassFlowNode, fallbackName: string): ClassAttribute[] {
+  const allAttributes = node.data.attributes ?? []
+  const pks = allAttributes.filter((attr) =>
+    Boolean(
+      attr.primaryKey ||
+      attr.isPrimaryKey ||
+      (attr as any).isPk ||
+      (attr as any).primary_key ||
+      (attr as any).es_pk ||
+      attr.name?.toLowerCase() === 'id'
+    )
+  )
+
+  if (pks.length > 0) {
+    return pks.map((pk) => {
+      const originalName = String(pk.name || 'id').trim()
+      const lower = originalName.toLowerCase()
+      // Si el nombre es genérico como 'id', 'codigo' o 'pk', lo calificamos con el nombre de la clase
+      const attrName =
+        lower === 'id' || lower === 'codigo' || lower === 'pk'
+          ? `id_${fallbackName.toLowerCase().replace(/\s+/g, '_')}`
+          : originalName
+      const attrType = String(pk.type || (pk as any).tipo || 'BIGINT')
+
+      return {
+        name: attrName,
+        type: attrType,
+        primaryKey: true,
+        isPrimaryKey: true,
+        foreignKey: true,
+        isForeignKey: true,
+        nullable: false,
+      }
+    })
+  }
+
+  // Fallback si la clase no tiene PK explícitamente marcada
+  return [
+    {
+      name: `id_${fallbackName.toLowerCase().replace(/\s+/g, '_')}`,
+      type: 'BIGINT',
+      primaryKey: true,
+      isPrimaryKey: true,
+      foreignKey: true,
+      isForeignKey: true,
+      nullable: false,
+    },
+  ]
+}
+
+function createAssociationClassNode(
+  relationId: string,
+  sourceClassId: string,
+  targetClassId: string,
+  currentNodes: ClassFlowNode[],
+): ClassFlowNode | null {
+  const source = currentNodes.find((node) => node.id === sourceClassId)
+  const target = currentNodes.find((node) => node.id === targetClassId)
+
+  if (!source || !target) {
+    return null
+  }
+
+  const associationClassId = `assoc-class-${relationId}`
+  const sourceName = source.data.name || 'Origen'
+  const targetName = target.data.name || 'Destino'
+
+  const sourcePks = getPrimaryKeysForAssociation(source, sourceName)
+  const targetPks = getPrimaryKeysForAssociation(target, targetName)
+
+  // Fusionamos ambas PKs asegurando que no haya colisión de nombres
+  const finalAttributes: ClassAttribute[] = [...sourcePks]
+  for (const tAttr of targetPks) {
+    let finalName = tAttr.name
+    if (finalAttributes.some((a) => a.name?.toLowerCase() === finalName?.toLowerCase())) {
+      finalName = `${finalName}_${targetName.toLowerCase()}`
+    }
+    finalAttributes.push({
+      ...tAttr,
+      name: finalName,
+    })
+  }
+
+  return {
+    id: associationClassId,
+    type: 'classNode',
+    position: {
+      x: (source.position.x + target.position.x) / 2,
+      y: Math.min(source.position.y, target.position.y) - 170,
+    },
+    data: {
+      name: getAssociationClassName(sourceName, targetName) || 'AssociationClass',
+      attributes: finalAttributes,
+      methods: [],
+    },
+  }
 }
 
 function toDiagramContent(nodes: ClassFlowNode[], edges: ClassFlowEdge[]): DiagramContent {
@@ -312,46 +431,6 @@ function getEdgeData(edge: ClassFlowEdge): UmlRelationData {
   }
 }
 
-function getAssociationClassName(sourceName: string, targetName: string) {
-  return `${sourceName}${targetName}`
-    .replace(/[^a-zA-Z0-9]/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('')
-}
-
-function createAssociationClassNode(
-  relationId: string,
-  sourceClassId: string,
-  targetClassId: string,
-  currentNodes: ClassFlowNode[],
-): ClassFlowNode | null {
-  const source = currentNodes.find((node) => node.id === sourceClassId)
-  const target = currentNodes.find((node) => node.id === targetClassId)
-
-  if (!source || !target) {
-    return null
-  }
-
-  const associationClassId = `assoc-class-${relationId}`
-  const sourceName = source.data.name || 'Origen'
-  const targetName = target.data.name || 'Destino'
-
-  return {
-    id: associationClassId,
-    type: 'classNode',
-    position: {
-      x: (source.position.x + target.position.x) / 2,
-      y: Math.min(source.position.y, target.position.y) - 170,
-    },
-    data: {
-      name: getAssociationClassName(sourceName, targetName) || 'AssociationClass',
-      attributes: [],
-      methods: [],
-    },
-  }
-}
 
 function buildRelationData({
   associationClassId,
@@ -415,6 +494,168 @@ function getRecursiveHandles(sourceHandle?: string | null, targetHandle?: string
   }
 }
 
+function normalizeClassAttributes(rawAttrs: unknown): ClassAttribute[] {
+  if (!Array.isArray(rawAttrs)) return []
+  return rawAttrs.map((attr) => {
+    if (typeof attr === 'string') {
+      const parts = attr.trim().split(/\s*:\s*/)
+      const name = parts[0] || 'attr'
+      const isPk = name.toLowerCase() === 'id'
+      return {
+        name,
+        type: parts[1] || 'VARCHAR',
+        primaryKey: isPk,
+        isPrimaryKey: isPk,
+        foreignKey: false,
+        isForeignKey: false,
+        nullable: false,
+      }
+    }
+    if (attr && typeof attr === 'object') {
+      const a = attr as Record<string, unknown>
+      const name = String(a.name ?? a.nombre ?? 'attr')
+      const rawPk = a.primaryKey ?? a.isPrimaryKey ?? a.primary_key ?? a.es_pk ?? a.isPk
+      const isPk = rawPk !== undefined ? Boolean(rawPk) : name.toLowerCase() === 'id'
+      const isFk = Boolean(
+        a.foreignKey ??
+        a.isForeignKey ??
+        a.foreign_key ??
+        a.es_fk ??
+        a.isFk
+      )
+      return {
+        ...a,
+        name,
+        type: String(a.type ?? a.tipo ?? 'VARCHAR'),
+        primaryKey: isPk,
+        isPrimaryKey: isPk,
+        foreignKey: isFk,
+        isForeignKey: isFk,
+        nullable: Boolean(a.nullable ?? a.puede_ser_nulo ?? false),
+      }
+    }
+    return {
+      name: 'attr',
+      type: 'VARCHAR',
+      primaryKey: false,
+      isPrimaryKey: false,
+      foreignKey: false,
+      isForeignKey: false,
+      nullable: false,
+    }
+  })
+}
+
+function normalizeClassMethods(rawMethods: unknown): ClassMethod[] {
+  if (!Array.isArray(rawMethods)) return []
+  return rawMethods.map((method) => {
+    if (typeof method === 'string') {
+      return {
+        name: method.trim(),
+        returnType: 'void',
+        parameters: [],
+      }
+    }
+    if (method && typeof method === 'object') {
+      const m = method as Record<string, unknown>
+      const parsedParams = normalizeMethodParameters(m.parameters ?? m.parametros).map((paramName) => ({
+        name: paramName,
+      }))
+      return {
+        name: String(m.name ?? m.nombre ?? 'metodo'),
+        returnType: String(m.returnType ?? m.return_type ?? m.tipo_retorno ?? 'void'),
+        parameters: parsedParams,
+      }
+    }
+    return { name: 'metodo', returnType: 'void', parameters: [] }
+  })
+}
+
+function buildFlowNodeFromEventPayload(
+  payload: Record<string, unknown>,
+  currentNodesCount: number,
+): ClassFlowNode {
+  const rawNode = (payload.node ?? payload.clase ?? payload) as Record<string, unknown>
+  const rawData = (rawNode.data ?? rawNode) as Record<string, unknown>
+
+  const id = String(rawNode.id ?? payload.node_id ?? payload.class_id ?? `class-${Date.now()}`)
+  const name = String(rawData.name ?? rawData.nombre ?? 'Clase')
+  const attributes = normalizeClassAttributes(rawData.attributes ?? rawData.atributos)
+  const methods = normalizeClassMethods(rawData.methods ?? rawData.metodos)
+
+  const nodeData: ClassNodeData = {
+    ...rawData,
+    name,
+    attributes,
+    methods,
+  }
+
+  let position = { x: 120 + currentNodesCount * 44, y: 110 + currentNodesCount * 34 }
+  if (rawNode.position && typeof rawNode.position === 'object') {
+    const p = rawNode.position as { x?: number; y?: number }
+    if (typeof p.x === 'number' && typeof p.y === 'number') {
+      position = { x: p.x, y: p.y }
+    }
+  } else if (typeof rawNode.x === 'number' && typeof rawNode.y === 'number') {
+    position = { x: rawNode.x, y: rawNode.y }
+  } else if (typeof payload.x === 'number' && typeof payload.y === 'number') {
+    position = { x: payload.x, y: payload.y }
+  }
+
+  return {
+    id,
+    type: 'classNode',
+    position,
+    style: getClassNodeStyle(nodeData, rawNode.style as ClassFlowNode['style']),
+    data: nodeData,
+  }
+}
+
+function buildFlowEdgeFromEventPayload(
+  payload: Record<string, unknown>,
+): ClassFlowEdge {
+  const rawEdge = (payload.edge ?? payload.relacion ?? payload) as Record<string, unknown>
+  const rawData = (rawEdge.data ?? rawEdge) as Record<string, unknown>
+
+  const id = String(rawEdge.id ?? payload.relation_id ?? payload.edge_id ?? `rel-${Date.now()}`)
+  const source = String(rawEdge.source ?? rawData.sourceClassId ?? payload.source_id ?? payload.source ?? '')
+  const target = String(rawEdge.target ?? rawData.targetClassId ?? payload.target_id ?? payload.target ?? '')
+  const relationType = normalizeRelationType(
+    rawData.relationType ?? rawData.relation_type ?? payload.relation_type ?? payload.tipo
+  )
+  const sourceCardinality = normalizeCardinality(
+    rawData.sourceCardinality ?? rawData.source_cardinality ?? payload.source_cardinality ?? '1..*'
+  )
+  const targetCardinality = normalizeCardinality(
+    rawData.targetCardinality ?? rawData.target_cardinality ?? payload.target_cardinality ?? '1'
+  )
+
+  const isRecursive = Boolean(source && target && source === target)
+  const handles = isRecursive ? getRecursiveHandles('right', 'top') : { sourceHandle: 'right', targetHandle: 'left' }
+  const sourceHandle = String(rawEdge.sourceHandle ?? handles.sourceHandle)
+  const targetHandle = String(rawEdge.targetHandle ?? handles.targetHandle)
+
+  return {
+    id,
+    source,
+    target,
+    sourceHandle,
+    targetHandle,
+    data: buildRelationData({
+      associationClassId: (rawData.associationClassId ?? payload.associationClassId) as string | undefined,
+      createdAt: (rawData.createdAt ?? payload.createdAt) as string | undefined,
+      createdBy: (rawData.createdBy ?? payload.actor ?? payload.createdBy) as string | undefined,
+      relationId: id,
+      relationType,
+      sourceClassId: source,
+      sourceCardinality,
+      targetClassId: target,
+      targetCardinality,
+    }),
+    ...getRelationEdgeProps(relationType),
+  }
+}
+
 export function EstudiantePage({
   theme,
   userProfile,
@@ -455,10 +696,10 @@ export function EstudiantePage({
   const [isXmiBusy, setIsXmiBusy] = useState(false)
   const [isMembersLoading, setIsMembersLoading] = useState(false)
   const [isMembersSaving, setIsMembersSaving] = useState(false)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 980)
   const [isCreateClassOpen, setIsCreateClassOpen] = useState(false)
-  const [isRelationToolboxOpen, setIsRelationToolboxOpen] = useState(true)
-  const [isAssistantVisible, setIsAssistantVisible] = useState(true)
+  const [isRelationToolboxOpen, setIsRelationToolboxOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 980)
+  const [isAssistantVisible, setIsAssistantVisible] = useState(() => typeof window !== 'undefined' && window.innerWidth > 980)
   const [activeRealtimeUsers, setActiveRealtimeUsers] = useState<RealtimeDiagramUser[]>([])
   const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected')
   const [message, setMessage] = useState('')
@@ -555,7 +796,31 @@ export function EstudiantePage({
     const payload = (event.payload ?? {}) as Record<string, unknown>
     const eventUser = event.user ?? (payload.user as RealtimeDiagramUser | undefined)
 
-    if (event.type === 'connection_ack') {
+    const rawType = String(event.type || event.action || (event as any).event || '').trim()
+    const upperType = rawType.toUpperCase()
+    const lowerType = rawType.toLowerCase()
+
+    const eventActor = String(
+      event.actor ||
+      (payload as any).actor ||
+      eventUser?.nombre ||
+      eventUser?.codigo ||
+      ''
+    ).trim()
+
+    const isLocalUser = Boolean(
+      (eventUser?.codigo && userProfile?.codigo && eventUser.codigo === userProfile.codigo) ||
+      (eventActor && userProfile?.codigo && eventActor === userProfile.codigo)
+    )
+
+    const notifyActor = (actionText: string) => {
+      if (isLocalUser) return
+      if (eventActor) {
+        Toast('Acción de ' + eventActor + ': ' + actionText)
+      }
+    }
+
+    if (lowerType === 'connection_ack') {
       const users = payload.users
       if (Array.isArray(users)) {
         setActiveRealtimeUsers(
@@ -570,38 +835,160 @@ export function EstudiantePage({
       return
     }
 
-    if (event.type === 'user_joined') {
+    if (lowerType === 'user_joined') {
       upsertRealtimeUser(eventUser)
       return
     }
 
-    if (event.type === 'user_left') {
+    if (lowerType === 'user_left') {
       removeRealtimeUser(eventUser)
       return
     }
 
-    if (eventUser?.codigo && eventUser.codigo === userProfile?.codigo) {
-      return
+    if (eventUser?.codigo && eventUser.codigo === userProfile?.codigo && lowerType !== 'class_created' && upperType !== 'CLASS_CREATED') {
+      // Allow collaborative state sync even if event user echoes
     }
 
-    if (event.type === 'event_rejected') {
+    if (lowerType === 'event_rejected') {
       setError('No tienes permiso para realizar esa accion en tiempo real')
       return
     }
 
-    if (event.type === 'class_moved') {
-      const classId = String(payload.class_id ?? '')
-      const position = payload.position as { x?: number; y?: number } | undefined
-
-      if (!classId || typeof position?.x !== 'number' || typeof position?.y !== 'number') {
+    // 1. CLASS_CREATED
+    if (upperType === 'CLASS_CREATED' || lowerType === 'class_created') {
+      const nuevoNodo = buildFlowNodeFromEventPayload(payload, nodesRef.current.length)
+      if (!nuevoNodo.id) {
         return
       }
 
-      if (eventUser) {
+      setNodes((current) => {
+        const exists = current.some((node) => node.id === nuevoNodo.id)
+        const nextNodes = exists
+          ? current.map((node) =>
+              node.id === nuevoNodo.id
+                ? {
+                    ...node,
+                    ...nuevoNodo,
+                    position: node.position ?? nuevoNodo.position,
+                    data: { ...node.data, ...nuevoNodo.data },
+                    style: getClassNodeStyle(nuevoNodo.data, nuevoNodo.style, nuevoNodo.width, nuevoNodo.height),
+                  }
+                : node,
+            )
+          : [...current, nuevoNodo]
+        queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
+        return nextNodes
+      })
+
+      notifyActor('Clase creada')
+      return
+    }
+
+    // 2. CLASS_UPDATED
+    if (upperType === 'CLASS_UPDATED' || lowerType === 'class_updated') {
+      const targetId = String(
+        payload.class_id ??
+        payload.node_id ??
+        payload.id ??
+        (payload.node as any)?.id ??
+        (payload.clase as any)?.id ??
+        ''
+      )
+
+      if (!targetId && !payload.node) {
+        return
+      }
+
+      setNodes((current) => {
+        const exists = current.some((node) => node.id === targetId || node.id === (payload.node as any)?.id)
+        if (!exists && payload.node) {
+          const newNode = buildFlowNodeFromEventPayload(payload, current.length)
+          const nextNodes = [...current, newNode]
+          queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
+          return nextNodes
+        }
+
+        const rawData = (payload.node ? (payload.node as any).data : (payload.data ?? payload)) as Record<string, unknown>
+        const nextNodes = current.map((node) => {
+          if (node.id !== targetId && node.id !== (payload.node as any)?.id) {
+            return node
+          }
+
+          const nextAttributes =
+            rawData.attributes || rawData.atributos
+              ? normalizeClassAttributes(rawData.attributes || rawData.atributos)
+              : node.data.attributes
+
+          const nextMethods =
+            rawData.methods || rawData.metodos
+              ? normalizeClassMethods(rawData.methods || rawData.metodos)
+              : node.data.methods
+
+          const nextName = String(rawData.name ?? rawData.nombre ?? node.data.name)
+
+          const nextData: ClassNodeData = {
+            ...node.data,
+            ...rawData,
+            name: nextName,
+            attributes: nextAttributes,
+            methods: nextMethods,
+          }
+
+          return {
+            ...node,
+            ...(payload.node as any),
+            data: nextData,
+            style: getClassNodeStyle(
+              nextData,
+              (payload.node as any)?.style ?? node.style,
+              (payload.node as any)?.width ?? node.width,
+              (payload.node as any)?.height ?? node.height,
+            ),
+          }
+        })
+
+        queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
+        return nextNodes
+      })
+
+      notifyActor('Clase actualizada')
+      return
+    }
+
+    // 3. CLASS_MOVED
+    if (upperType === 'CLASS_MOVED' || lowerType === 'class_moved') {
+      const classId = String(
+        payload.class_id ??
+        payload.clase_id ??
+        payload.node_id ??
+        payload.id ??
+        ''
+      )
+      const newX = Number(
+        payload.position
+          ? (payload.position as any).x
+          : (payload.x ?? (payload.position as any)?.x)
+      )
+      const newY = Number(
+        payload.position
+          ? (payload.position as any).y
+          : (payload.y ?? (payload.position as any)?.y)
+      )
+
+      if (!classId || Number.isNaN(newX) || Number.isNaN(newY)) {
+        return
+      }
+
+      // Si el movimiento proviene del mismo usuario local, ignoramos el echo para no causar saltos
+      if (isLocalUser) {
+        return
+      }
+
+      if (eventUser || eventActor) {
         setNodeCollaborator(classId, {
-          codigo: eventUser.codigo,
-          nombre: eventUser.nombre,
-          email: eventUser.email,
+          codigo: eventUser?.codigo ?? eventActor,
+          nombre: eventUser?.nombre ?? eventActor,
+          email: eventUser?.email,
           lastActiveAt: Date.now(),
         })
 
@@ -615,71 +1002,147 @@ export function EstudiantePage({
       }
 
       setNodes((current) => {
-        const nextNodes = current.map((node) => (node.id === classId ? { ...node, position: { x: position.x!, y: position.y! } } : node))
+        const nextNodes = current.map((node) =>
+          node.id === classId ? { ...node, position: { x: newX, y: newY } } : node,
+        )
         queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
         return nextNodes
       })
-      return
-    }
 
-    if (event.type === 'class_created' || event.type === 'class_updated') {
-      const incomingNode = payload.node as ClassFlowNode | undefined
-      if (!incomingNode?.id) {
-        return
+      if (eventActor && /ia|ai|asistente|agente/i.test(eventActor)) {
+        notifyActor('Clase movida')
       }
-
-      setNodes((current) => {
-        const exists = current.some((node) => node.id === incomingNode.id)
-        const nextNode = {
-          ...incomingNode,
-          style: getClassNodeStyle(incomingNode.data, incomingNode.style, incomingNode.width, incomingNode.height),
-        }
-        const nextNodes = exists ? current.map((node) => (node.id === incomingNode.id ? nextNode : node)) : [...current, nextNode]
-        queueMicrotask(() => setDiagramState(nextNodes, edgesRef.current))
-        return nextNodes
-      })
       return
     }
 
-    if (event.type === 'class_deleted') {
-      const classId = String(payload.class_id ?? '')
+    // 4. CLASS_DELETED
+    if (upperType === 'CLASS_DELETED' || lowerType === 'class_deleted') {
+      const classId = String(payload.class_id ?? payload.node_id ?? payload.id ?? '')
       if (!classId) {
         return
       }
 
-      setNodes((current) => {
-        const nextNodes = current.filter((node) => node.id !== classId)
+      if (selectedNodeId === classId) {
+        setSelectedNodeId('')
+      }
+
+      setNodes((currentNodes) => {
+        const nextNodes = currentNodes.filter((node) => node.id !== classId)
         setEdges((currentEdges) => {
-          const nextEdges = currentEdges.filter((edge) => edge.source !== classId && edge.target !== classId && edge.data?.associationClassId !== classId)
+          const nextEdges = currentEdges.filter(
+            (edge) =>
+              edge.source !== classId &&
+              edge.target !== classId &&
+              edge.data?.associationClassId !== classId,
+          )
           queueMicrotask(() => setDiagramState(nextNodes, nextEdges))
           return nextEdges
         })
         return nextNodes
       })
+
+      notifyActor('Clase eliminada')
       return
     }
 
-    if (event.type === 'relation_created' || event.type === 'relation_updated') {
-      const incomingEdge = payload.edge as ClassFlowEdge | undefined
-      if (!incomingEdge?.id) {
+    // 5. RELATION_CREATED
+    if (upperType === 'RELATION_CREATED' || lowerType === 'relation_created') {
+      const nuevoEdge = buildFlowEdgeFromEventPayload(payload)
+      if (!nuevoEdge.id || !nuevoEdge.source || !nuevoEdge.target) {
         return
       }
 
       setEdges((current) => {
-        const relationType = normalizeRelationType(incomingEdge.data?.relationType)
-        const nextEdge = { ...incomingEdge, ...getRelationEdgeProps(relationType) }
-        const exists = current.some((edge) => edge.id === incomingEdge.id)
-        const nextEdges = exists ? current.map((edge) => (edge.id === incomingEdge.id ? nextEdge : edge)) : [...current, nextEdge]
+        const exists = current.some((edge) => edge.id === nuevoEdge.id)
+        const nextEdges = exists
+          ? current.map((edge) => (edge.id === nuevoEdge.id ? nuevoEdge : edge))
+          : [...current, nuevoEdge]
         queueMicrotask(() => setDiagramState(nodesRef.current, nextEdges))
         return nextEdges
       })
+
+      notifyActor('Relación creada')
       return
     }
 
-    if (event.type === 'relation_deleted') {
-      const relationId = String(payload.relation_id ?? '')
+    // 6. RELATION_UPDATED
+    if (upperType === 'RELATION_UPDATED' || lowerType === 'relation_updated') {
+      const relationId = String(
+        payload.relation_id ??
+        payload.edge_id ??
+        payload.id ??
+        (payload.edge as any)?.id ??
+        ''
+      )
+
       if (!relationId) {
         return
+      }
+
+      setEdges((current) => {
+        const nextEdges = current.map((edge) => {
+          if (edge.id !== relationId) {
+            return edge
+          }
+
+          const rawData = (payload.edge ? (payload.edge as any).data : (payload.data ?? payload)) as Record<string, unknown>
+          const relationType = normalizeRelationType(
+            rawData.relationType ?? rawData.relation_type ?? edge.data?.relationType,
+          )
+          const sourceCardinality = normalizeCardinality(
+            rawData.sourceCardinality ?? rawData.source_cardinality ?? edge.data?.sourceCardinality,
+          )
+          const targetCardinality = normalizeCardinality(
+            rawData.targetCardinality ?? rawData.target_cardinality ?? edge.data?.targetCardinality,
+          )
+          const name = String(rawData.name ?? rawData.label ?? edge.data?.name ?? '')
+
+          const nextData: UmlRelationData = {
+            id: relationId,
+            sourceClassId: String(rawData.sourceClassId ?? edge.data?.sourceClassId ?? edge.source),
+            targetClassId: String(rawData.targetClassId ?? edge.data?.targetClassId ?? edge.target),
+            createdAt: String(rawData.createdAt ?? edge.data?.createdAt ?? new Date().toISOString()),
+            ...edge.data,
+            ...rawData,
+            relationType,
+            sourceCardinality,
+            targetCardinality,
+            name,
+          }
+
+          return {
+            ...edge,
+            ...(payload.edge as any),
+            data: nextData,
+            ...getRelationEdgeProps(relationType),
+          }
+        })
+
+        queueMicrotask(() => setDiagramState(nodesRef.current, nextEdges))
+        return nextEdges
+      })
+
+      notifyActor('Relación actualizada')
+      return
+    }
+
+    // 7. RELATION_DELETED
+    if (upperType === 'RELATION_DELETED' || lowerType === 'relation_deleted') {
+      const relationId = String(
+        payload.relation_id ??
+        payload.edge_id ??
+        payload.id ??
+        (payload.edge as any)?.id ??
+        ''
+      )
+
+      if (!relationId) {
+        return
+      }
+
+      if (selectedEdgeId === relationId) {
+        setSelectedEdgeId('')
+        setStoredSelectedRelationId('')
       }
 
       setEdges((current) => {
@@ -687,10 +1150,12 @@ export function EstudiantePage({
         queueMicrotask(() => setDiagramState(nodesRef.current, nextEdges))
         return nextEdges
       })
+
+      notifyActor('Relación eliminada')
       return
     }
 
-    if (event.type === 'diagram_reloaded') {
+    if (lowerType === 'diagram_reloaded') {
       const content = payload.contenido as DiagramContent | undefined
       if (!content) {
         return
@@ -704,7 +1169,7 @@ export function EstudiantePage({
       return
     }
 
-    if (event.type === 'comment_created') {
+    if (lowerType === 'comment_created') {
       const comment = (payload.comentario ?? payload.comment ?? payload) as Comentario
       if (comment?.id) {
         addComentario(comment)
@@ -712,7 +1177,7 @@ export function EstudiantePage({
       return
     }
 
-    if (event.type === 'comment_updated' || event.type === 'comment_resolved') {
+    if (lowerType === 'comment_updated' || lowerType === 'comment_resolved') {
       const comment = (payload.comentario ?? payload.comment ?? payload) as Comentario
       if (comment?.id) {
         updateComentario(comment)
@@ -720,7 +1185,7 @@ export function EstudiantePage({
       return
     }
 
-    if (event.type === 'comment_deleted') {
+    if (lowerType === 'comment_deleted') {
       const commentId = Number(payload.comentario_id ?? payload.comment_id ?? payload.id)
       if (commentId) {
         removeComentario(commentId)
@@ -858,6 +1323,18 @@ export function EstudiantePage({
       if (data.length > 0) {
         const targetDiagrama = data.find((diagrama) => diagrama.id === preferredDiagramaId) ?? data[0]
         await openDiagrama(targetDiagrama.id)
+      } else {
+        try {
+          const autoDiagrama = await crearDiagrama({
+            id_proyecto: proyecto.id,
+            nombre: 'Diagrama principal',
+            contenido: emptyContent,
+          })
+          setDiagramas([autoDiagrama])
+          await openDiagrama(autoDiagrama.id)
+        } catch (autoErr) {
+          console.warn('No se pudo crear diagrama inicial automático:', autoErr)
+        }
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los diagramas')
@@ -1156,9 +1633,33 @@ export function EstudiantePage({
   }
 
   async function addClass() {
-    if (!selectedDiagrama) {
-      setError('Crea o abre un diagrama antes de agregar clases.')
-      return
+    let currentDiagrama = selectedDiagrama
+    if (!currentDiagrama) {
+      if (!selectedProyecto) {
+        setError('Crea o abre un diagrama antes de agregar clases.')
+        return
+      }
+
+      if (!canEditDiagram) {
+        denyDiagramEdit()
+        return
+      }
+
+      try {
+        setIsSaving(true)
+        const autoDiag = await crearDiagrama({
+          id_proyecto: selectedProyecto.id,
+          nombre: newDiagramName.trim() || 'Diagrama principal',
+          contenido: emptyContent,
+        })
+        setDiagramas((curr) => [autoDiag, ...curr])
+        currentDiagrama = autoDiag
+        setSelectedDiagrama(autoDiag)
+      } catch {
+        setError('Crea o abre un diagrama antes de agregar clases.')
+        setIsSaving(false)
+        return
+      }
     }
 
     if (!canEditDiagram) {
@@ -1171,8 +1672,10 @@ export function EstudiantePage({
     setMessage('')
 
     try {
+      const classId = `class-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
       const hasAttribute = newAttributeName.trim().length > 0
-      const diagrama = await agregarClase(selectedDiagrama.id, {
+      const diagrama = await agregarClase(currentDiagrama.id, {
+        id: classId,
         name: newClassName,
         x: 120 + nodes.length * 44,
         y: 110 + nodes.length * 34,
@@ -1569,7 +2072,7 @@ export function EstudiantePage({
 
   function updateSelectedAttribute(
     attributeIndex: number,
-    field: 'name' | 'type' | 'primaryKey' | 'nullable',
+    field: 'name' | 'type' | 'primaryKey' | 'foreignKey' | 'nullable',
     value: string | boolean,
   ) {
     if (!selectedNode) {
@@ -1583,14 +2086,23 @@ export function EstudiantePage({
 
     updateSelectedClassDraft({
       ...selectedNode.data,
-      attributes: selectedNode.data.attributes.map((attribute, index) =>
-        index === attributeIndex
-          ? {
-              ...attribute,
-              [field]: value,
-            }
-          : attribute,
-      ),
+      attributes: selectedNode.data.attributes.map((attribute, index) => {
+        if (index !== attributeIndex) {
+          return attribute
+        }
+        const updated = {
+          ...attribute,
+          [field]: value,
+        }
+        if (field === 'primaryKey') {
+          updated.primaryKey = Boolean(value)
+          updated.isPrimaryKey = Boolean(value)
+        } else if (field === 'foreignKey') {
+          updated.foreignKey = Boolean(value)
+          updated.isForeignKey = Boolean(value)
+        }
+        return updated
+      }),
     })
   }
 
@@ -1936,6 +2448,11 @@ export function EstudiantePage({
       return
     }
 
+    // Actualización optimista inmediata en local
+    setNodes((current) =>
+      current.map((n) => (n.id === node.id ? { ...n, position: { ...node.position } } : n)),
+    )
+
     try {
       const diagrama = await moverClase(selectedDiagrama.id, node.id, {
         x: node.position.x,
@@ -1946,10 +2463,27 @@ export function EstudiantePage({
       const nextNodes = toFlowNodes(content.nodes)
       const nextEdges = toFlowEdges(content.edges)
 
+      // Garantizar que la posición del nodo movido preserve exactamente sus coordenadas
+      // y fusionar con los nodos locales para evitar que ninguno desaparezca
+      setNodes((current) => {
+        const merged = current.map((n) => {
+          if (n.id === node.id) {
+            return { ...n, position: { ...node.position } }
+          }
+          const fromBackend = nextNodes.find((bn) => bn.id === n.id)
+          return fromBackend ?? n
+        })
+        for (const bn of nextNodes) {
+          if (!merged.some((m) => m.id === bn.id)) {
+            merged.push(bn)
+          }
+        }
+        return merged
+      })
+
       setSelectedDiagrama(diagrama)
-      setNodes(nextNodes)
       setEdges(nextEdges)
-      setDiagramState(nextNodes, nextEdges)
+      setDiagramState(nodesRef.current, nextEdges)
       setDiagramas((current) => current.map((item) => (item.id === diagrama.id ? diagrama : item)))
       sendRealtimeEvent('class_moved', {
         class_id: node.id,
@@ -1959,7 +2493,22 @@ export function EstudiantePage({
         },
       })
     } catch (moveError) {
-      setError(getProjectActionError(moveError, 'No se pudo mover la clase'))
+      console.warn('moverClase falló, ejecutando fallback con saveDiagrama', moveError)
+      try {
+        const currentUpdatedNodes = nodes.map((n) =>
+          n.id === node.id ? { ...n, position: { ...node.position } } : n,
+        )
+        await saveDiagrama(currentUpdatedNodes, edges)
+        sendRealtimeEvent('class_moved', {
+          class_id: node.id,
+          position: {
+            x: node.position.x,
+            y: node.position.y,
+          },
+        })
+      } catch (fallbackError) {
+        setError(getProjectActionError(fallbackError, 'No se pudo mover la clase'))
+      }
     }
   }
 
@@ -2656,8 +3205,13 @@ export function EstudiantePage({
                   <button
                     aria-expanded={isCreateClassOpen}
                     className="create-class-toggle canvas-create-class-toggle"
-                    disabled={!selectedDiagrama || !canEditDiagram}
-                    onClick={() => setIsCreateClassOpen((current) => !current)}
+                    disabled={!canEditDiagram}
+                    onClick={async () => {
+                      if (!selectedDiagrama && selectedProyecto && canEditDiagram) {
+                        await createDiagrama()
+                      }
+                      setIsCreateClassOpen((current) => !current)
+                    }}
                     type="button"
                   >
                     <Plus size={18} />
@@ -2687,6 +3241,7 @@ export function EstudiantePage({
                   connectNodes={connectNodes}
                   edges={edges}
                   nodes={nodes}
+                  onCreateDiagram={createDiagrama}
                   onEdgesChange={onEdgesChange}
                   onNodeDrag={sendNodeMoveRealtime}
                   onNodesChange={onNodesChange}
@@ -2804,6 +3359,8 @@ export function EstudiantePage({
         }}
         theme={theme}
       />
+
+      <ToastContainer />
     </main>
   )
 }

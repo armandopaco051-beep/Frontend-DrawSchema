@@ -22,6 +22,9 @@ export type ClassAttribute = {
   name?: string
   type?: string
   primaryKey?: boolean
+  isPrimaryKey?: boolean
+  foreignKey?: boolean
+  isForeignKey?: boolean
   nullable?: boolean
   [key: string]: unknown
 }

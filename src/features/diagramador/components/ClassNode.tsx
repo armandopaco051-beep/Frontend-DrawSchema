@@ -140,12 +140,31 @@ export function ClassNode({ id, data, isConnectable, selected }: NodeProps<Class
       </header>
       <div>
         {data.attributes.length > 0 ? (
-          data.attributes.map((attribute, index) => (
-            <p key={`${String(attribute.name)}-${index}`}>
-              {attribute.primaryKey ? '# ' : '+ '}
-              {String(attribute.name ?? 'atributo')}: {String(attribute.type ?? 'TEXT')}
-            </p>
-          ))
+          data.attributes.map((attribute, index) => {
+            const isPk = Boolean(attribute.primaryKey || (attribute as any).isPrimaryKey)
+            const isFk = Boolean(attribute.foreignKey || (attribute as any).isForeignKey)
+
+            let prefix = '+ '
+            let badge = ''
+            if (isPk && isFk) {
+              prefix = '# '
+              badge = ' [PK, FK]'
+            } else if (isPk) {
+              prefix = '# '
+              badge = ' [PK]'
+            } else if (isFk) {
+              prefix = '+ '
+              badge = ' [FK]'
+            }
+
+            return (
+              <p key={`${String(attribute.name)}-${index}`}>
+                {prefix}
+                {String(attribute.name ?? 'atributo')}: {String(attribute.type ?? 'TEXT')}
+                {badge ? <span className="attribute-key-badge">{badge}</span> : null}
+              </p>
+            )
+          })
         ) : (
           <p className="muted-line">Sin atributos</p>
         )}

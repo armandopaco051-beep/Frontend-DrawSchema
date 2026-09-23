@@ -7,7 +7,7 @@ import {
   ViewportPortal,
 } from '@xyflow/react'
 import type { Connection, OnConnect, OnEdgesChange, OnNodeDrag, OnNodesChange } from '@xyflow/react'
-import { FileCode2 } from 'lucide-react'
+import { FileCode2, Plus } from 'lucide-react'
 import type { DiagramaResponse } from '../../../services/diagramaService'
 import { UmlRelationEdge } from '../../diagrams/components/edges/UmlRelationEdge'
 import type { ClassFlowEdge, ClassFlowNode, RelationType } from '../../diagrams/types/relation.types'
@@ -66,6 +66,7 @@ type DiagramCanvasProps = {
   selectedEdgeId: string
   theme: 'dark' | 'light'
   connectNodes: OnConnect
+  onCreateDiagram?: () => void
   onEdgesChange: OnEdgesChange<ClassFlowEdge>
   onNodeDrag: OnNodeDrag<ClassFlowNode>
   onNodesChange: OnNodesChange<ClassFlowNode>
@@ -80,6 +81,7 @@ export function DiagramCanvas({
   connectNodes,
   edges,
   nodes,
+  onCreateDiagram,
   onEdgesChange,
   onNodeDrag,
   onNodesChange,
@@ -189,9 +191,29 @@ export function DiagramCanvas({
 
       {!selectedDiagrama ? (
         <div className="flow-empty-overlay">
-          <FileCode2 size={28} />
+          <FileCode2 size={32} />
           <strong>Abre o crea un diagrama</strong>
-          <span>Luego crea clases y conectalas visualmente.</span>
+          <span>Crea tu primer diagrama para comenzar a diseñar clases y relaciones.</span>
+          {canEditDiagram && onCreateDiagram ? (
+            <button
+              className="primary-action"
+              onClick={onCreateDiagram}
+              style={{
+                marginTop: '12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              type="button"
+            >
+              <Plus size={18} />
+              Crear Diagrama Principal
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -1264,6 +1264,23 @@
   color: #737373;
 }
 
+.attribute-key-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: #60a5fa;
+  margin-left: 5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(96, 165, 250, 0.12);
+  letter-spacing: 0.5px;
+}
+
+.users-page-light .attribute-key-badge {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+
 .flow-handle {
   width: 16px !important;
   min-width: 16px !important;
@@ -1465,7 +1482,7 @@
 }
 
 .features-grid-attributes {
-  grid-template-columns: minmax(140px, 1.1fr) minmax(120px, 0.8fr) 58px 58px 52px;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(100px, 0.8fr) 48px 48px 48px 46px;
 }
 
 .features-grid-methods {
@@ -2733,21 +2750,24 @@
     overflow-y: auto;
   }
 
-  .student-sidebar,
-  .student-sidebar-collapsed .student-sidebar {
+  .student-sidebar {
     position: relative;
     height: auto;
     min-height: 0;
     max-height: none;
     padding: 16px;
+    transition: padding 0.2s ease;
   }
 
   .student-sidebar-toggle {
-    display: none;
+    display: inline-flex !important;
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
   }
 
-  .student-sidebar .admin-nav,
-  .student-sidebar-collapsed .admin-nav {
+  .student-sidebar .admin-nav {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
@@ -2756,28 +2776,26 @@
     margin-top: 22px;
   }
 
-  .student-sidebar .admin-nav p,
-  .student-sidebar-collapsed .admin-nav p {
+  .student-sidebar .admin-nav p {
     display: block;
     grid-column: 1 / -1;
   }
 
-  .student-sidebar-collapsed .admin-brand strong,
-  .student-sidebar-collapsed .admin-nav button span,
-  .student-sidebar-collapsed .sidebar-tone-button span,
-  .student-sidebar-collapsed .sidebar-user-trigger div,
-  .student-sidebar-collapsed .sidebar-user-trigger svg,
-  .student-sidebar-collapsed .sidebar-back {
-    display: initial;
+  .student-page.student-sidebar-collapsed .student-sidebar {
+    padding: 12px 16px;
   }
 
-  .student-sidebar-collapsed .admin-nav button,
-  .student-sidebar-collapsed .sidebar-tone-button,
-  .student-sidebar-collapsed .sidebar-user-card {
-    width: 100%;
-    height: auto;
-    justify-content: flex-start;
-    padding: 12px;
+  .student-page.student-sidebar-collapsed .student-sidebar .admin-nav,
+  .student-page.student-sidebar-collapsed .student-sidebar .sidebar-bottom-stack {
+    display: none;
+  }
+
+  .student-page.student-sidebar-collapsed .student-sidebar .admin-brand {
+    padding-right: 48px;
+  }
+
+  .student-page.student-sidebar-collapsed .admin-brand strong {
+    display: initial;
   }
 
   .sidebar-bottom-stack {
@@ -2791,24 +2809,50 @@
     padding: 14px;
   }
 
-  .student-projects-home,
-  .diagrammer-shell {
+  .student-projects-home {
     grid-template-columns: 1fr;
   }
 
+  .diagrammer-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Priority order: Canvas panel first on tablet and mobile */
+  .diagram-flow-panel {
+    order: 1;
+    width: 100%;
+  }
+
+  .diagrammer-left-panel {
+    order: 2;
+    width: 100%;
+  }
+
+  .diagrammer-right-panel {
+    order: 3;
+    width: 100%;
+  }
+
   .diagrammer-header {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
   }
 
   .diagrammer-header h1 {
     white-space: normal;
+    word-break: break-word;
   }
 
   .diagrammer-header-actions {
-    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
     width: 100%;
-    justify-content: space-between;
   }
 
   .diagrammer-save,
@@ -2831,32 +2875,41 @@
   }
 
   .react-flow-canvas {
-    height: 58svh;
-    min-height: 420px;
+    height: 56svh;
+    min-height: 380px;
   }
 
   .class-features-panel,
-  .relations-panel {
+  .relations-panel,
+  .features-table,
+  .relations-table {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .features-grid-attributes,
+  .features-grid-methods,
+  .features-head {
+    min-width: 500px;
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 440px;
+    min-height: 400px;
   }
 }
 
 @media (max-width: 620px) {
   .diagrammer-workspace {
-    padding: 10px;
+    padding: 10px 8px;
   }
 
-  .student-sidebar,
-  .student-sidebar-collapsed .student-sidebar {
-    padding: 14px 12px;
+  .student-sidebar {
+    padding: 12px 10px;
   }
 
-  .student-sidebar .admin-nav,
-  .student-sidebar-collapsed .admin-nav {
+  .student-sidebar .admin-nav {
     grid-template-columns: 1fr;
   }
 
@@ -2865,45 +2918,72 @@
   }
 
   .diagrammer-header {
-    grid-template-columns: 1fr;
     gap: 10px;
+    padding: 10px 12px;
+  }
+
+  /* File actions ribbon: horizontal swipeable scroll instead of massive vertical stack */
+  .diagram-header-file-actions {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 4px 2px;
+    width: 100%;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .diagram-header-file-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .diagram-header-file-actions button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 10px;
+    font-size: 0.8rem;
   }
 
   .diagrammer-header-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .diagram-header-file-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
   }
 
   .project-role-badge,
-  .realtime-users,
+  .realtime-users {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .diagrammer-save,
   .diagrammer-header-actions .primary-action {
-    width: 100%;
+    flex: 1 1 calc(50% - 6px);
+    width: auto;
     justify-content: center;
+    font-size: 0.85rem;
+    padding: 8px 12px;
   }
 
   .diagram-canvas-topbar,
   .diagram-file-toolbar,
   .diagram-picker,
-  .diagram-header-file-actions,
   .diagram-file-actions,
   .diagram-new-inline,
   .student-create-row,
   .xmi-actions,
   .class-features-header,
-  .features-grid-attributes,
-  .features-grid-methods,
   .relations-row {
     grid-template-columns: 1fr;
   }
 
   .diagram-canvas-topbar {
     align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .canvas-create-class-toggle {
@@ -2917,7 +2997,7 @@
   .canvas-create-class-panel > .form-row {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 10px;
   }
 
   .canvas-create-class-panel .primary-action {
@@ -2926,44 +3006,55 @@
   }
 
   .react-flow-canvas {
-    height: 62svh;
-    min-height: 380px;
+    height: clamp(340px, 56svh, 460px);
+    min-height: 320px;
     border-radius: 12px;
   }
 
+  /* Hide mini-map on small phone screens to save critical space */
+  .react-flow__minimap {
+    display: none !important;
+  }
+
+  .react-flow__controls {
+    transform: scale(0.85);
+    transform-origin: bottom left;
+    margin-bottom: 8px;
+    margin-left: 8px;
+  }
+
   .react-flow__node-classNode {
-    min-width: 220px;
+    min-width: 200px;
   }
 
   .flow-class-node {
-    min-height: 160px;
+    min-height: 140px;
   }
 
   .features-table,
   .relations-table {
-    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
 
   .features-grid,
   .relations-row {
     gap: 8px;
-    padding: 10px;
-  }
-
-  .features-head,
-  .relations-head {
-    display: none;
+    padding: 8px;
   }
 
   .features-grid input,
   .relations-row select,
   .relations-row input {
-    min-height: 40px;
+    min-height: 38px;
+    font-size: 14px;
   }
 
   .relations-panel header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 6px;
   }
 
   .relations-panel header > span {
@@ -2987,38 +3078,51 @@
   }
 
   .diagram-flow-panel > .relations-panel .relations-table {
-    max-height: 280px;
+    max-height: 260px;
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 420px;
+    min-height: 380px;
   }
 }
 
 @media (max-width: 420px) {
   .diagrammer-workspace {
-    padding: 10px 8px;
+    padding: 8px 4px;
   }
 
   .diagrammer-left-panel,
   .diagram-flow-panel,
   .diagrammer-right-panel,
   .student-panel {
-    border-radius: 14px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .diagrammer-header {
+    padding: 8px 10px;
   }
 
   .diagram-stats {
     width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .diagram-stats span {
-    flex: 1;
+    flex: 1 1 calc(50% - 6px);
     text-align: center;
+    font-size: 0.8rem;
   }
 
   .react-flow-canvas {
-    min-height: 340px;
+    min-height: 300px;
+    height: 52svh;
+  }
+
+  .diagrammer-save,
+  .diagrammer-header-actions .primary-action {
+    flex: 1 1 100%;
   }
 }
 
