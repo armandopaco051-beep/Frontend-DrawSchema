@@ -1,7 +1,7 @@
 import { ApiError } from './api'
 import type { DiagramaResponse } from './diagramaService'
 
-export const AI_API_URL = (import.meta.env.VITE_AI_API_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '')
+export const AI_API_URL = (import.meta.env.VITE_AI_API_URL || 'https://iabackend-copia.onrender.com').trim().replace(/\/+$/, '')
 
 export type AiPlannerRequest = {
   message: string

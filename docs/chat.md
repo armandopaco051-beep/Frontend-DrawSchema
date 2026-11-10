@@ -2,9 +2,9 @@
 
 ## Servicios
 
-- Backend principal: `http://127.0.0.1:8001` (`VITE_API_URL`).
-- DrawSchemaAI: `http://127.0.0.1:8000` (`VITE_AI_API_URL`).
-- Socket del diagramador: `ws://127.0.0.1:8001` (`VITE_WS_URL`).
+- Backend principal: `https://backendcopia-software.onrender.com` (`VITE_API_URL`).
+- DrawSchemaAI: `https://iabackend-copia.onrender.com` (`VITE_AI_API_URL`).
+- Socket del diagramador: `wss://backendcopia-software.onrender.com` (`VITE_WS_URL`).
 - Ollama es un servicio interno de DrawSchemaAI. El navegador no llama directamente a Ollama ni a Neon.
 
 La base de datos puede seguir alojada en Neon mientras las APIs se ejecutan localmente.
@@ -41,4 +41,4 @@ Pruebas de contratos HTTP y cambios de estado con dependencias simuladas; no esc
 
 ## Respuestas persistentes
 
-Reiniciar backend y DrawSchemaAI después de actualizar. Configurar AI_API_URL=http://127.0.0.1:8000 en el backend y BACKEND_API_URL=http://127.0.0.1:8001 en DrawSchemaAI. El frontend deja de pedir el planner directamente para texto: primero guarda el mensaje y pide su respuesta mediante el backend. Un reintento reutiliza el mensaje y una respuesta ya guardada. Los planes recuperados solo se muestran para su diagrama; se rechaza aplicarlos si su versión cambió.
+Reiniciar backend y DrawSchemaAI después de actualizar. Configurar AI_API_URL=https://iabackend-copia.onrender.com en el backend y BACKEND_API_URL= https://backendcopia-software.onrender.com en DrawSchemaAI. El frontend deja de pedir el planner directamente para texto: primero guarda el mensaje y pide su respuesta mediante el backend. Un reintento reutiliza el mensaje y una respuesta ya guardada. Los planes recuperados solo se muestran para su diagrama; se rechaza aplicarlos si su versión cambió.
