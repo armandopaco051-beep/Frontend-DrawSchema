@@ -344,7 +344,7 @@ function getPrimaryKeysForAssociation(node: ClassFlowNode, fallbackName: string)
       (attr as any).isPk ||
       (attr as any).primary_key ||
       (attr as any).es_pk ||
-      attr.name?.toLowerCase() === 'id'
+      (attr.name?.toLowerCase() === 'id' && attr.primaryKey !== false && attr.isPrimaryKey !== false)
     )
   )
 
@@ -371,18 +371,8 @@ function getPrimaryKeysForAssociation(node: ClassFlowNode, fallbackName: string)
     })
   }
 
-  // Fallback si la clase no tiene PK explícitamente marcada
-  return [
-    {
-      name: `id_${fallbackName.toLowerCase().replace(/\s+/g, '_')}`,
-      type: 'BIGINT',
-      primaryKey: true,
-      isPrimaryKey: true,
-      foreignKey: true,
-      isForeignKey: true,
-      nullable: false,
-    },
-  ]
+  // Una clase sin PK no permite derivar una referencia válida.
+  return []
 }
 
 function createAssociationClassNode(

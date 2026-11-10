@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, Loader2, Mic, MicOff, Send } from 'lucide-react'
 import { ApiError } from '../../services/api'
+import { useProjectChat } from './useProjectChat'
+import type { TextProvider } from '../../services/chatService'
+import { ChatScopeSelector } from './ChatScopeSelector'
+import { AiProviderSelector } from './AiProviderSelector'
+import type { ChatScope } from './ChatScopeSelector'
+import { getUserProfileFromToken } from '../../utils/auth'
 import type { DiagramaResponse } from '../../services/diagramaService'
-import type { AiPlannerAction, AiPlannerQuestion, AiPlannerResponse } from '../../services/aiService'
+import type { AiPlannerAction, AiPlannerQuestion } from '../../services/aiService'
 import {
-  analyzeDiagramImage,
   executeDiagramPlan,
-  planWithAi,
 } from '../../services/aiService'
 
 type SpeechRecognitionResultLike = {
@@ -42,7 +46,7 @@ type LocalSpeechRecognitionOptions = {
 }
 
 type BrowserSpeechRecognitionConstructor = {
-  new (): BrowserSpeechRecognition
+  new(): BrowserSpeechRecognition
   available?: (
     options: LocalSpeechRecognitionOptions,
   ) => Promise<'available' | 'downloadable' | 'downloading' | 'unavailable'>
@@ -63,6 +67,7 @@ function getSpeechRecognitionConstructor() {
 type AiPlannerPanelProps = {
   proyectoId?: number | null
   diagramaId?: number | null
+  diagramaNombre?: string
   autorCodigo?: string | null
   compact?: boolean
   canEdit?: boolean
@@ -74,16 +79,42 @@ type ActionablePlan = {
   actions: AiPlannerAction[]
   questions: AiPlannerQuestion[]
   can_execute: boolean
+  diagrama_version?: number
 }
 
 type ChatMessage = {
   id: string
+  createdAt: string
+  senderCode?: string | null
+  diagramId?: number | null
+  retryMessageId?: number
   role: 'user' | 'assistant' | 'error'
   text: string
+  senderName?: string
+  recipientName?: string
+  providerLabel?: string
   plan?: ActionablePlan
   warnings?: string[]
   questions?: AiPlannerQuestion[]
   imageStats?: { classes: number; relations: number }
+}
+
+function readStoredPlan(value: Record<string, unknown> | null): ActionablePlan | undefined {
+  if (!value || typeof value.summary !== 'string' || typeof value.can_execute !== 'boolean'
+    || !Array.isArray(value.actions) || !Array.isArray(value.questions)) return undefined
+  if (!value.actions.every((action) => action && typeof action === 'object'
+    && typeof action.order === 'number' && typeof action.tool === 'string'
+    && typeof action.description === 'string' && typeof action.arguments === 'object'
+    && action.arguments !== null && typeof action.requires_confirmation === 'boolean')) return undefined
+  if (!value.questions.every((question) => typeof question === 'string')) return undefined
+  return value as ActionablePlan
+}
+
+function readImageStats(value: Record<string, unknown> | null): ChatMessage['imageStats'] {
+  const stats = value?.imageStats
+  if (!stats || typeof stats !== 'object' || !('classes' in stats) || !('relations' in stats)
+    || typeof stats.classes !== 'number' || typeof stats.relations !== 'number') return undefined
+  return { classes: stats.classes, relations: stats.relations }
 }
 
 function getQuestionText(question: AiPlannerQuestion) {
@@ -97,10 +128,11 @@ function createMessage(
   role: ChatMessage['role'],
   text: string,
   plan?: ActionablePlan,
-  options?: Pick<ChatMessage, 'warnings' | 'questions' | 'imageStats'>,
+  options?: Pick<ChatMessage, 'warnings' | 'questions' | 'imageStats' | 'senderName'>,
 ): ChatMessage {
   return {
     id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
     role,
     text,
     plan,
@@ -111,15 +143,18 @@ function createMessage(
 export function AiPlannerPanel({
   compact = false,
   diagramaId,
+  diagramaNombre,
   proyectoId,
   autorCodigo,
   canEdit = true,
   onDiagramUpdated,
 }: AiPlannerPanelProps) {
-  const [message, setMessage] = useState('')
+  const [chatScope, setChatScope] = useState<ChatScope>('individual')
+  const [textProvider, setTextProvider] = useState<TextProvider>(() => localStorage.getItem('drawschema:text-provider') === 'local' ? 'local' : 'gemini')
+  const [conversationMessages, setConversationMessages] = useState<Record<string, ChatMessage[]>>({})
   const [localProyectoId, setLocalProyectoId] = useState(proyectoId ? String(proyectoId) : '')
   const [localDiagramaId, setLocalDiagramaId] = useState(diagramaId ? String(diagramaId) : '')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false)
@@ -128,13 +163,69 @@ export function AiPlannerPanel({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const dictationBaseTextRef = useRef('')
+  const panelMountedRef = useRef(true)
 
   const activeProyectoId = proyectoId ?? Number(localProyectoId)
   const activeDiagramaId = diagramaId ?? Number(localDiagramaId)
   const isBusy = isLoading || isApplying || isAnalyzingImage || isPreparingVoice
+  const groupPending = chatScope === 'grupal' // Shared image attachments are not enabled yet.
+  const currentUser = getUserProfileFromToken(localStorage.getItem('token'))
+  const chat = useProjectChat(activeProyectoId, chatScope, currentUser?.codigo || autorCodigo || '')
 
+  const conversationKey = [
+    currentUser?.codigo || autorCodigo || 'sin-sesion',
+    activeProyectoId,
+    activeDiagramaId,
+    chatScope,
+  ].join(':')
+
+  const temporaryMessages = chat.blocked ? [] : conversationMessages[conversationKey] ?? []
+  const persistedMessages: ChatMessage[] = chat.messages.map((stored) => ({
+    id: `stored-${stored.id}`,
+    createdAt: stored.creado_en,
+    role: stored.rol,
+    text: stored.texto,
+    senderName: stored.autor_nombre,
+    senderCode: stored.autor_codigo,
+    providerLabel: stored.resultado_ia?.provider === 'local' ? 'IA local'
+      : stored.resultado_ia?.provider === 'gemini' ? 'Gemini' : undefined,
+    diagramId: stored.diagrama_id,
+    recipientName: typeof stored.resultado_ia?.destinatario_nombre === 'string'
+      ? stored.resultado_ia.destinatario_nombre : undefined,
+    warnings: Array.isArray(stored.resultado_ia?.warnings) ? stored.resultado_ia.warnings.filter((item): item is string => typeof item === 'string') : undefined,
+    imageStats: readImageStats(stored.resultado_ia),
+    plan: stored.diagrama_id === activeDiagramaId ? readStoredPlan(stored.resultado_ia) : undefined,
+    retryMessageId: stored.rol === 'user'
+      && stored.diagrama_id === (activeDiagramaId > 0 ? activeDiagramaId : null)
+      && stored.autor_codigo === (currentUser?.codigo || autorCodigo)
+      && !stored.texto.startsWith('Imagen:')
+      && (chatScope === 'individual' || /@ia\b/i.test(stored.texto))
+      && !chat.messages.some((reply) => reply.resultado_ia?.reply_to === String(stored.id))
+        ? stored.id : undefined,
+  }))
+  const messages = [...persistedMessages, ...temporaryMessages].sort(
+    (first, second) => Date.parse(first.createdAt) - Date.parse(second.createdAt),
+  )
+
+  function setMessages(
+    update: (current: ChatMessage[]) => ChatMessage[],
+  ) {
+    setConversationMessages((current) => ({
+      ...current,
+      [conversationKey]: update(current[conversationKey] ?? []),
+    }))
+  }
+
+  function changeChatScope(nextScope: ChatScope) {
+    if (isBusy || isListening) return
+
+    setChatScope(nextScope)
+    setMessage('')
+  }
   useEffect(() => {
+    panelMountedRef.current = true
     return () => {
+      panelMountedRef.current = false
       speechRecognitionRef.current?.abort()
       speechRecognitionRef.current = null
     }
@@ -175,17 +266,24 @@ export function AiPlannerPanel({
     try {
       const result = await executeDiagramPlan({
         diagrama_id: activeDiagramaId,
+        proyecto_id: activeProyectoId,
         autor_codigo: autorCodigo,
         confirmed: true,
         actions: plan.actions,
+        expected_version: plan.diagrama_version,
       })
       if (!result.success) {
         pushError(result.message || 'El agente IA no pudo aplicar el plan.')
         return
       }
-      if (result.diagrama) {
-        onDiagramUpdated?.(result.diagrama)
+      if (!result.diagrama || result.diagrama.id !== activeDiagramaId
+        || !Array.isArray(result.diagrama.contenido?.nodes)
+        || !Array.isArray(result.diagrama.contenido?.edges)) {
+        pushError('La ejecución no devolvió el diagrama activo actualizado. Recarga el diagrama antes de volver a aplicar el plan.')
+        return
       }
+      if (!panelMountedRef.current) return
+      onDiagramUpdated?.(result.diagrama)
       setMessages((current) => [
         ...current,
         createMessage('assistant', result.message || 'Listo, actualice el diagrama.'),
@@ -202,38 +300,46 @@ export function AiPlannerPanel({
   }
 
   async function handlePlan() {
+    if (isBusy || !chat.ready) return
     const cleanMessage = message.trim()
-    if (!cleanMessage) {
-      pushError('Escribe o dicta una peticion para el agente IA.')
-      return
+    if (!cleanMessage) return
+    if (chatScope === 'individual' && !hasActiveDiagram()) return
+    setIsLoading(true)
+    let saved = false
+    try {
+      const stored = await chat.send(
+        cleanMessage,
+        Number.isInteger(activeDiagramaId) && activeDiagramaId > 0 ? activeDiagramaId : undefined,
+      )
+      saved = true
+      setMessage('')
+      if (chatScope === 'individual' || /@ia\b/i.test(cleanMessage)) {
+        await chat.respond(stored.id, stored.diagrama_id ?? undefined, textProvider)
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'No se pudo completar la solicitud.'
+      pushError(saved
+        ? `Tu consulta se guardó. Puedes reintentar la respuesta: ${detail}`
+        : `No se pudo guardar el mensaje: ${detail}`)
+    } finally {
+      setIsLoading(false)
     }
-    if (!hasActiveDiagram()) return
+  }
 
-    setMessages((current) => [...current, createMessage('user', cleanMessage)])
-    setMessage('')
+  async function retryAnswer(messageId: number) {
+    if (isBusy || !chat.ready) return
     setIsLoading(true)
     try {
-      const nextPlan: AiPlannerResponse = await planWithAi({
-        message: cleanMessage,
-        proyecto_id: activeProyectoId,
-        diagrama_id: activeDiagramaId,
-      })
-      setMessages((current) => [
-        ...current,
-        createMessage('assistant', nextPlan.summary || 'Ya tengo un plan para tu diagrama.', nextPlan),
-      ])
-    } catch (requestError) {
-      pushError(
-        requestError instanceof ApiError
-          ? String(requestError.message)
-          : 'No se pudo conectar con el backend IA.',
-      )
+      await chat.respond(messageId, activeDiagramaId > 0 ? activeDiagramaId : undefined, textProvider)
+    } catch (error) {
+      pushError(error instanceof Error ? error.message : 'No se pudo recuperar la respuesta.')
     } finally {
       setIsLoading(false)
     }
   }
 
   async function toggleVoiceInput() {
+    if (groupPending || isBusy) return
     if (isListening) {
       speechRecognitionRef.current?.stop()
       return
@@ -344,6 +450,7 @@ export function AiPlannerPanel({
   }
 
   async function handleImage(image: File) {
+    if (isBusy || !chat.ready) return
     if (!hasActiveDiagram()) return
     if (!autorCodigo) {
       pushError('No se encontro el codigo del usuario.')
@@ -362,55 +469,13 @@ export function AiPlannerPanel({
       return
     }
 
-    setMessages((current) => [...current, createMessage('user', `Imagen: ${image.name}`)])
     setIsAnalyzingImage(true)
     try {
-      const result = await analyzeDiagramImage({
-        image,
-        proyectoId: activeProyectoId,
-        diagramaId: activeDiagramaId,
-      })
-
-      const responseOptions = {
-        warnings: result.warnings,
-        questions: result.questions,
-        imageStats: { classes: result.classes.length, relations: result.relations.length },
+      const stored = await chat.analyze(image, activeDiagramaId)
+      const plan = readStoredPlan(stored.resultado_ia)
+      if (plan?.can_execute && plan.actions.length > 0) {
+        await handleApplyPlan(plan)
       }
-
-      if (!result.can_execute || result.actions.length === 0) {
-        const message = result.actions.length === 0 && result.questions.length === 0
-          ? `${result.summary} El diagrama ya coincide o no se detectaron cambios aplicables.`
-          : `${result.summary} No se aplicaron cambios porque hay datos visuales por confirmar.`
-        setMessages((current) => [
-          ...current,
-          createMessage('assistant', message, undefined, responseOptions),
-        ])
-        return
-      }
-
-      setIsApplying(true)
-      const execution = await executeDiagramPlan({
-        diagrama_id: activeDiagramaId,
-        autor_codigo: autorCodigo,
-        confirmed: true,
-        actions: result.actions,
-      })
-      if (!execution.success) {
-        pushError(execution.message || 'No se pudo dibujar el contenido reconocido en la imagen.')
-        return
-      }
-      if (execution.diagrama) {
-        onDiagramUpdated?.(execution.diagrama)
-      }
-      setMessages((current) => [
-        ...current,
-        createMessage(
-          'assistant',
-          `${result.summary} ${execution.message || 'El contenido fue dibujado en la pizarra.'}`,
-          undefined,
-          responseOptions,
-        ),
-      ])
     } catch (requestError) {
       pushError(
         requestError instanceof ApiError
@@ -427,17 +492,40 @@ export function AiPlannerPanel({
   return (
     <section className={compact ? 'ai-chat-panel ai-chat-panel-compact' : 'ai-chat-panel'}>
       <header className="ai-planner-header">
-        <div>
+        <div className="ai-chat-scope-heading">
           <p>Asistente</p>
           <h2>Conversar el diagrama</h2>
+          <small className="ai-chat-scope-description">
+            {activeDiagramaId > 0 ? `Diagrama activo: ${diagramaNombre || `#${activeDiagramaId}`} · #${activeDiagramaId}` : 'Sin diagrama activo'}
+          </small>
+          <ChatScopeSelector value={chatScope} disabled={isBusy || isListening} onChange={changeChatScope} />
+          <AiProviderSelector value={textProvider} disabled={isBusy || isListening}
+            onChange={(provider) => {
+              setTextProvider(provider)
+              localStorage.setItem('drawschema:text-provider', provider)
+            }} />
         </div>
       </header>
 
-      <div className="ai-chat-messages">
-        {messages.length === 0 ? (
+      <div className="ai-chat-messages" aria-live="polite">
+        {chat.loading ? <p className="ai-chat-status" role="status">Cargando conversación...</p> : null}
+        {chat.error ? (
+          <div className="ai-chat-status" role="alert">
+            <p>{chat.error}</p>
+            <button type="button" disabled={isBusy || chat.loading} onClick={chat.retry}>Reintentar conexión</button>
+          </div>
+        ) : null}
+        {chat.hasOlder ? (
+          <button type="button" className="ai-chat-history-button" disabled={chat.loadingOlder} onClick={() => void chat.loadOlder()}>
+            {chat.loadingOlder ? 'Cargando...' : 'Ver mensajes anteriores'}
+          </button>
+        ) : null}
+        {!chat.loading && messages.length === 0 ? (
           <div className="ai-chat-empty">
-            <strong>Escribi lo que quieres construir.</strong>
-            <p>Por ejemplo: crea un sistema de ventas con clientes, productos y pedidos.</p>
+            <strong>{groupPending ? 'Chat del proyecto' : 'Escribe lo que quieres construir.'}</strong>
+            <p>{groupPending
+              ? 'Los miembros del proyecto pueden leer y enviar mensajes aquí. Menciona @IA para consultar al asistente; la respuesta se guarda para todos.'
+              : 'Tus consultas y las respuestas de la IA quedan guardadas en esta conversación privada.'}</p>
           </div>
         ) : null}
 
@@ -447,9 +535,22 @@ export function AiPlannerPanel({
           )
           const visibleQuestions = chatMessage.plan?.questions ?? chatMessage.questions ?? []
           return (
-            <article className={`ai-chat-message ${chatMessage.role}`} key={chatMessage.id}>
+            <article className={`ai-chat-message ${chatMessage.role}${chatMessage.role === 'user' && chatMessage.senderCode && chatMessage.senderCode !== (currentUser?.codigo || autorCodigo) ? ' peer' : ''}`} key={chatMessage.id}>
               <div className="ai-chat-bubble">
+                <div className="ai-chat-author">
+                  {chatMessage.role === 'assistant'
+                    ? `${chatMessage.providerLabel || 'Asistente IA'}${chatMessage.recipientName ? ` · para ${chatMessage.recipientName}` : ''}`
+                    : chatMessage.role === 'error' ? 'Aviso' : chatMessage.senderName || 'Tú'}
+                </div>
                 <p>{chatMessage.text}</p>
+                {chatMessage.diagramId && chatMessage.diagramId !== activeDiagramaId ? (
+                  <small>Mensaje del diagrama #{chatMessage.diagramId}; no se usa como contexto del diagrama activo.</small>
+                ) : null}
+                {chatMessage.retryMessageId ? (
+                  <button type="button" disabled={isBusy || !chat.ready} onClick={() => void retryAnswer(chatMessage.retryMessageId!)}>
+                    Obtener respuesta IA
+                  </button>
+                ) : null}
 
                 {chatMessage.imageStats ? (
                   <div className="ai-image-stats">
@@ -492,14 +593,27 @@ export function AiPlannerPanel({
                       </div>
                     ) : null}
 
-                    <button
-                      className="primary-action ai-apply-button"
-                      disabled={isApplying || !canEdit || !chatMessage.plan.can_execute || sortedActions.length === 0}
-                      onClick={() => handleApplyPlan(chatMessage.plan!)}
-                      type="button"
-                    >
-                      {isApplying ? 'Aplicando...' : 'Aplicar plan'}
-                    </button>
+                    {sortedActions.length > 0 && chatMessage.plan.can_execute ? (
+                      <>
+                        <button
+                          className="primary-action ai-apply-button"
+                          disabled={isBusy || chat.blocked || !canEdit}
+                          onClick={() => handleApplyPlan(chatMessage.plan!)}
+                          type="button"
+                        >
+                          {isApplying ? 'Aplicando...' : 'Aplicar plan'}
+                        </button>
+                        {!canEdit ? <small>Tu rol no permite modificar este diagrama.</small> : null}
+                      </>
+                    ) : (
+                      <small>
+                        {visibleQuestions.length > 0
+                          ? 'Responde las preguntas en el chat para completar el plan.'
+                          : sortedActions.length > 0
+                            ? 'Esta propuesta todavía no está lista para ejecutarse. Pide a la IA que complete el plan.'
+                            : null}
+                      </small>
+                    )}
                   </>
                 ) : null}
               </div>
@@ -516,7 +630,7 @@ export function AiPlannerPanel({
                   ? 'Leyendo el diagrama de la imagen...'
                   : isPreparingVoice
                     ? 'Preparando dictado local...'
-                    : 'Planificando respuesta...'}
+                    : groupPending ? 'Enviando mensaje...' : 'Guardando consulta y preparando respuesta...'}
               </span>
             </div>
           </article>
@@ -542,11 +656,11 @@ export function AiPlannerPanel({
 
       <div className="ai-chat-composer">
         <div className="ai-composer-tools">
-          <label className="ai-composer-icon" title="Analizar imagen">
+          <label className="ai-composer-icon" title="Analizar imagen con Gemini">
             <ImagePlus size={18} />
             <input
               accept="image/png,image/jpeg,image/webp"
-              disabled={isBusy || isListening}
+              disabled={isBusy || isListening || !chat.ready}
               onChange={(event) => {
                 const image = event.target.files?.[0]
                 if (image) void handleImage(image)
@@ -558,7 +672,7 @@ export function AiPlannerPanel({
           <button
             aria-label={isListening ? 'Detener dictado' : 'Dictar peticion'}
             className={isListening ? 'ai-composer-icon active' : 'ai-composer-icon'}
-            disabled={isBusy}
+            disabled={isBusy || groupPending}
             onClick={toggleVoiceInput}
             title={isListening ? 'Detener dictado' : 'Dictar peticion'}
             type="button"
@@ -567,7 +681,7 @@ export function AiPlannerPanel({
           </button>
         </div>
         <textarea
-          disabled={isBusy || isListening}
+          disabled={isBusy || isListening || !chat.ready}
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -575,10 +689,10 @@ export function AiPlannerPanel({
               void handlePlan()
             }
           }}
-          placeholder={isListening ? 'Escuchando...' : 'Pide algo para tu diagrama...'}
+          placeholder={chat.loading ? 'Cargando conversación...' : !chat.ready ? 'Selecciona un proyecto y conecta el chat' : isListening ? 'Escuchando...' : groupPending ? 'Escribe al equipo o menciona @IA...'  : 'Pide algo para tu diagrama...'}
           value={message}
         />
-        <button aria-label="Enviar peticion IA" disabled={isBusy || isListening || !message.trim()} onClick={handlePlan} title="Enviar" type="button">
+        <button aria-label={groupPending ? 'Enviar mensaje al proyecto' : 'Enviar consulta a la IA'} disabled={isBusy || isListening || !chat.ready || !message.trim()} onClick={handlePlan} title="Enviar" type="button">
           {isLoading ? <Loader2 className="ai-spin" size={18} /> : <Send size={18} />}
         </button>
       </div>

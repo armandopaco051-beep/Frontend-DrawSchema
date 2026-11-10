@@ -620,7 +620,7 @@
 
 .diagrammer-shell {
   display: grid;
-  grid-template-columns: 210px minmax(560px, 1fr) 320px;
+  grid-template-columns: 210px minmax(0, 1fr) 380px;
   align-items: start;
   gap: 14px;
   height: auto;
@@ -649,6 +649,11 @@
 .diagrammer-right-panel {
   overflow-x: hidden;
   overflow-y: visible;
+}
+
+.diagrammer-right-panel {
+  overflow: hidden;
+  padding: 12px;
 }
 
 .diagram-file-toolbar {
@@ -2726,7 +2731,7 @@
 
 @media (max-width: 1280px) {
   .diagrammer-shell {
-    grid-template-columns: 200px minmax(0, 1fr) 300px;
+    grid-template-columns: 200px minmax(0, 1fr) 350px;
     gap: 12px;
   }
 
@@ -2758,8 +2763,7 @@
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 500px;
-    max-height: calc(100svh - 116px);
+    min-height: 0;
   }
 }
 
@@ -2777,8 +2781,7 @@
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 440px;
-    max-height: none;
+    min-height: 0;
   }
 }
 
@@ -2938,7 +2941,7 @@
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 400px;
+    min-height: 0;
   }
 }
 
@@ -3125,7 +3128,7 @@
   }
 
   .diagrammer-right-panel .ai-chat-panel {
-    min-height: 380px;
+    min-height: 0;
   }
 }
 

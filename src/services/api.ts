@@ -1,4 +1,4 @@
-export const API_URL = (import.meta.env.VITE_API_URL || 'https://backendcopia-software.onrender.com').replace(/\/$/, '')
+export const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001').trim().replace(/\/+$/, '')
 export const AUTH_UNAUTHORIZED_EVENT = 'drawschema:auth-unauthorized'
 
 export class ApiError extends Error {
@@ -17,6 +17,7 @@ type RequestOptions<TBody> = {
   body?: TBody
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   token?: string
+  signal?: AbortSignal
 }
 
 export async function apiRequest<TResponse, TBody = unknown>(
@@ -36,6 +37,7 @@ export async function apiRequest<TResponse, TBody = unknown>(
     method: options.method ?? 'GET',
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   })
 
   const data = await response.json().catch(() => null)

@@ -63,12 +63,20 @@
 }
 
 .ai-chat-panel {
-  display: grid;
-  grid-template-rows: auto minmax(300px, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  min-height: 540px;
-  max-height: calc(100svh - 120px);
+  height: clamp(400px, calc(100svh - 120px), 900px);
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
   padding: 16px;
+}
+
+.ai-chat-panel > .ai-planner-header,
+.ai-chat-panel > .ai-context-grid,
+.ai-chat-panel > .ai-chat-composer {
+  flex-shrink: 0;
 }
 
 .ai-chat-panel-compact {
@@ -85,10 +93,15 @@
 
 .ai-chat-messages {
   display: flex;
-  min-height: 300px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
   padding: 3px 3px 3px 0;
 }
 
@@ -274,6 +287,8 @@
 
 .ai-composer-tools {
   display: flex;
+  grid-column: 1 / 3;
+  grid-row: 2;
   gap: 4px;
   align-items: center;
   min-height: 42px;
@@ -309,6 +324,8 @@
 }
 
 .ai-chat-composer textarea {
+  grid-column: 1 / -1;
+  grid-row: 1;
   width: 100%;
   min-height: 42px;
   max-height: 130px;
@@ -321,7 +338,13 @@
   font-size: 13px;
   line-height: 1.45;
   padding: 10px 5px 6px 7px;
-  resize: vertical;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.ai-chat-composer textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .ai-chat-composer button {
@@ -335,6 +358,11 @@
   background: #f4f4f4;
   color: #080808;
   cursor: pointer;
+}
+
+.ai-chat-composer > button {
+  grid-column: 3;
+  grid-row: 2;
 }
 
 .ai-chat-composer button:disabled,
@@ -865,12 +893,11 @@
   }
 
   .ai-chat-panel {
-    min-height: 440px;
-    max-height: none;
+    height: clamp(440px, 80svh, 760px);
   }
 
   .ai-chat-messages {
-    min-height: 260px;
+    min-height: 0;
   }
 }
 
@@ -888,12 +915,11 @@
   }
 
   .ai-chat-panel {
-    min-height: 420px;
     padding: 12px;
   }
 
   .ai-chat-messages {
-    min-height: 230px;
+    min-height: 0;
   }
 
   .ai-chat-bubble {

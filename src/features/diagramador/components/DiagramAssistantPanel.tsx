@@ -52,10 +52,12 @@ export function DiagramAssistantPanel({
     <>
       {isAssistantVisible ? (
         <AiPlannerPanel
+          key={`${selectedProyecto.id}:${selectedDiagrama.id}:${userProfile?.codigo || ''}`}
           autorCodigo={userProfile?.codigo}
           canEdit={canEditDiagram}
           compact
           diagramaId={selectedDiagrama.id}
+          diagramaNombre={selectedDiagrama.nombre}
           onDiagramUpdated={onDiagramUpdated}
           proyectoId={selectedProyecto.id}
         />
