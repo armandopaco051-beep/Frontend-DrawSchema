@@ -786,6 +786,7 @@ export function EstudiantePage({
   const [urlInviteCode, setUrlInviteCode] = useState('')
   const setDiagramState = useDiagramStore((state) => state.setDiagramState)
   const addStoredRelation = useDiagramStore((state) => state.addRelation)
+  const selectedRelation = edges.find((edge) => edge.id === selectedEdgeId)
   const updateStoredRelation = useDiagramStore((state) => state.updateRelation)
   const removeStoredRelation = useDiagramStore((state) => state.removeRelation)
   const setStoredSelectedRelationId = useDiagramStore((state) => state.setSelectedRelationId)
@@ -2430,6 +2431,19 @@ export function EstudiantePage({
     }
   }
 
+  async function saveRelationName(edgeId: string, name: string) {
+    if (!canEditDiagram || isSaving) return
+
+    const relation = edges.find((edge) => edge.id === edgeId)
+    const trimmedName = name.trim()
+    if (!relation || (relation.data?.name ?? '') === trimmedName) return
+
+    const nextEdges = edges.map((edge) =>
+      edge.id === edgeId ? { ...edge, data: { ...getEdgeData(edge), name: trimmedName } } : edge,
+    )
+    await saveDiagrama(nodes, nextEdges, { broadcastSaved: true })
+  }
+
   async function invertRelationDirection(edgeId: string) {
     if (!canEditDiagram) {
       denyDiagramEdit()
@@ -3402,6 +3416,32 @@ export function EstudiantePage({
                   setStoredSelectedRelationId={setStoredSelectedRelationId}
                   theme={theme}
                 />
+
+                {selectedRelation && canEditDiagram ? (
+                  <form
+                    className="relation-name-editor"
+                    key={JSON.stringify([selectedDiagrama?.id, selectedRelation.id, selectedRelation.data?.name])}
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      const name = new FormData(event.currentTarget).get('relationName')
+                      if (typeof name === 'string') void saveRelationName(selectedRelation.id, name)
+                    }}
+                  >
+                    <label>
+                      Texto de la relación
+                      <input
+                        defaultValue={selectedRelation.data?.name ?? ''}
+                        disabled={isSaving}
+                        maxLength={100}
+                        name="relationName"
+                        placeholder="Ej. pertenece"
+                      />
+                    </label>
+                    <button className="primary-action" disabled={isSaving} type="submit">
+                      Guardar texto
+                    </button>
+                  </form>
+                ) : null}
 
                 {selectedNode ? (
                   <ClassFeaturesPanel

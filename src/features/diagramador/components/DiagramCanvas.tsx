@@ -143,6 +143,7 @@ export function DiagramCanvas({
 
             const path = getRelationPath(source, target)
             const relationType = normalizeRelationType(edge.data?.relationType)
+            const relationName = typeof edge.data?.name === 'string' ? edge.data.name.trim() : ''
             const showCardinality = relationUsesCardinality(relationType)
             const associationClassId = edge.data?.associationClassId
             const associationClassNode =
@@ -162,7 +163,7 @@ export function DiagramCanvas({
                 />
                 <RelationEndpoint angle={path.sourceAngle} relationType={relationType} variant="source" x={path.sourceX} y={path.sourceY} />
                 <RelationEndpoint angle={path.targetAngle} relationType={relationType} variant="target" x={path.targetX} y={path.targetY} />
-                {relationType === 'associationClass' ? (
+                {relationType === 'associationClass' && !relationName ? (
                   <g className="relation-association-class-badge" transform={`translate(${path.midX - 39} ${path.midY - 15})`}>
                     <rect height="30" rx="7" width="78" />
                     <text x="39" y="19">
@@ -175,6 +176,15 @@ export function DiagramCanvas({
                     className="relation-association-class-link"
                     d={`M ${associationClassCenterX} ${associationClassConnectorY} L ${path.midX} ${path.midY}`}
                   />
+                ) : null}
+                {relationName ? (
+                  <text
+                    className="relation-overlay-label relation-name-label"
+                    x={path.midX}
+                    y={path.midY - 8}
+                  >
+                    {relationName}
+                  </text>
                 ) : null}
                 {showCardinality ? (
                   <>

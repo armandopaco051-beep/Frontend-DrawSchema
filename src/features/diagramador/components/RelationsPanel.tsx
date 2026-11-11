@@ -76,8 +76,7 @@ export function RelationBuilderPanel({
           type="button"
         >
           <div>
-            <p>Tipo</p>
-            <h2>Linea UML</h2>
+            <h2>Tipos de relación</h2>
           </div>
           <span>
             <RelationTypeIcon type={selectedRelationType} />
@@ -89,17 +88,18 @@ export function RelationBuilderPanel({
             <div className="relation-options">
               {relationTypes.map((relation) => (
                 <button
+                  aria-pressed={selectedRelationType === relation.id}
                   className={selectedRelationType === relation.id ? 'relation-option active' : 'relation-option'}
                   disabled={!canEditDiagram}
                   key={relation.id}
                   onClick={() => onRelationTypeChange(relation.id)}
+                  title={relation.description}
                   type="button"
                 >
                   <span>
                     <RelationTypeIcon type={relation.id} />
                   </span>
                   <strong>{relation.label}</strong>
-                  <small>{relation.description}</small>
                 </button>
               ))}
             </div>

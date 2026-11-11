@@ -64,10 +64,10 @@ export function ClassNode({ id, data, isConnectable, selected }: NodeProps<Class
         minHeight={140}
         minWidth={210}
       />
-      <Handle className="flow-handle flow-handle-top" id="top" position={Position.Top} type="source" />
-      <Handle className="flow-handle flow-handle-right" id="right" position={Position.Right} type="source" />
-      <Handle className="flow-handle flow-handle-bottom" id="bottom" position={Position.Bottom} type="source" />
-      <Handle className="flow-handle flow-handle-left" id="left" position={Position.Left} type="source" />
+      <Handle className="flow-handle flow-handle-top" id="top" isConnectable={isConnectable} position={Position.Top} type="source" />
+      <Handle className="flow-handle flow-handle-right" id="right" isConnectable={isConnectable} position={Position.Right} type="source" />
+      <Handle className="flow-handle flow-handle-bottom" id="bottom" isConnectable={isConnectable} position={Position.Bottom} type="source" />
+      <Handle className="flow-handle flow-handle-left" id="left" isConnectable={isConnectable} position={Position.Left} type="source" />
 
       {/* Indicador de colaborador en tiempo real (Figma / Miro style) */}
       {isCollaboratorActive && activeCollaborator ? (
@@ -138,48 +138,29 @@ export function ClassNode({ id, data, isConnectable, selected }: NodeProps<Class
           )}
         </div>
       </header>
-      <div>
-        {data.attributes.length > 0 ? (
-          data.attributes.map((attribute, index) => {
-            const isPk = Boolean(attribute.primaryKey || (attribute as any).isPrimaryKey)
-            const isFk = Boolean(attribute.foreignKey || (attribute as any).isForeignKey)
+      <div className="flow-class-attributes">
+        {data.attributes.map((attribute, index) => {
+          const isPk = attribute.primaryKey || attribute.isPrimaryKey
+          const isFk = attribute.foreignKey || attribute.isForeignKey
+          const badge = isPk ? (isFk ? 'PK, FK' : 'PK') : isFk ? 'FK' : ''
 
-            let prefix = '+ '
-            let badge = ''
-            if (isPk && isFk) {
-              prefix = '# '
-              badge = ' [PK, FK]'
-            } else if (isPk) {
-              prefix = '# '
-              badge = ' [PK]'
-            } else if (isFk) {
-              prefix = '+ '
-              badge = ' [FK]'
-            }
-
-            return (
-              <p key={`${String(attribute.name)}-${index}`}>
-                {prefix}
-                {String(attribute.name ?? 'atributo')}: {String(attribute.type ?? 'TEXT')}
-                {badge ? <span className="attribute-key-badge">{badge}</span> : null}
-              </p>
-            )
-          })
-        ) : (
-          <p className="muted-line">Sin atributos</p>
-        )}
+          return (
+            <p key={`${String(attribute.name)}-${index}`}>
+              {String(attribute.name ?? 'atributo')}: {String(attribute.type ?? 'TEXT')}
+              {badge ? <span className="attribute-key-badge">{badge}</span> : null}
+            </p>
+          )
+        })}
       </div>
-      <footer>
-        {data.methods.length > 0 ? (
-          data.methods.map((method, index) => (
+      {data.methods.length > 0 ? (
+        <footer>
+          {data.methods.map((method, index) => (
             <p key={`${String(method.name)}-${index}`}>
               {String(method.name ?? 'metodo')}({formatMethodParameters(method.parameters)}): {String(method.returnType ?? 'void')}
             </p>
-          ))
-        ) : (
-          <p className="muted-line">Sin metodos</p>
-        )}
-      </footer>
+          ))}
+        </footer>
+      ) : null}
     </article>
   )
 }
