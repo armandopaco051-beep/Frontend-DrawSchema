@@ -3211,3 +3211,47 @@
   background: rgba(99, 102, 241, 0.15);
   color: #ffffff;
 }
+
+.relation-overlay-reference {
+  --relation-ink: #a4a4a4;
+  --relation-selection: #8fb6ff;
+}
+
+.users-page-light .relation-overlay-reference {
+  --relation-ink: #626262;
+  --relation-selection: #2563eb;
+}
+
+.relation-overlay-reference .relation-overlay-path,
+.relation-overlay-reference .relation-association-class-link,
+.relation-overlay-reference .relation-symbol {
+  stroke: var(--relation-ink);
+  stroke-width: 1.2px;
+  filter: none;
+}
+
+.relation-overlay-reference .relation-overlay-path {
+  stroke-dasharray: none;
+}
+
+.relation-overlay-reference .relation-overlay-path.selected {
+  stroke: var(--relation-selection);
+  stroke-width: 2px;
+}
+
+.relation-overlay-reference .relation-symbol-triangle,
+.relation-overlay-reference .relation-symbol-aggregation {
+  fill: #f2dbad;
+}
+
+.relation-overlay-reference .relation-symbol-composition {
+  fill: var(--relation-ink);
+}
+
+.relation-overlay-hit-area {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16px;
+  pointer-events: stroke;
+  cursor: pointer;
+}

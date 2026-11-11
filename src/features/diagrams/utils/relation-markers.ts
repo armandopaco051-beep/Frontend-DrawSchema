@@ -168,7 +168,23 @@ export function getRelationEdgeProps(relationType: RelationType): Partial<ClassF
   return base
 }
 
-export function getRelationPath(source: ClassFlowNode, target: ClassFlowNode) {
+function getNodeBounds(node: ClassFlowNode) {
+  const width = getNodeDimension(node.measured?.width ?? node.width ?? node.style?.width, 245)
+  const height = getNodeDimension(node.measured?.height ?? node.height ?? node.style?.height, 138)
+  return { x: node.position.x + width / 2, y: node.position.y + height / 2, width, height }
+}
+
+export function getRelationBorderPoint(node: ClassFlowNode, x: number, y: number) {
+  const bounds = getNodeBounds(node)
+  const dx = x - bounds.x
+  const dy = y - bounds.y
+  const scale = Math.max(Math.abs(dx) / (bounds.width / 2), Math.abs(dy) / (bounds.height / 2))
+  return scale > 0
+    ? { x: bounds.x + dx / scale, y: bounds.y + dy / scale }
+    : { x: bounds.x, y: bounds.y }
+}
+
+export function getRelationPath(source: ClassFlowNode, target: ClassFlowNode, straight = false) {
   const sourceWidth = getNodeDimension(source.width ?? source.style?.width, 245)
   const sourceHeight = getNodeDimension(source.height ?? source.style?.height, 138)
   const targetWidth = getNodeDimension(target.width ?? target.style?.width, 245)
@@ -198,6 +214,32 @@ export function getRelationPath(source: ClassFlowNode, target: ClassFlowNode) {
       sourceLabelY: sourceY - 10,
       targetLabelX: targetX + 18,
       targetLabelY: targetY - 16,
+    }
+  }
+
+  if (straight) {
+    const sourceCenter = getNodeBounds(source)
+    const targetCenter = getNodeBounds(target)
+    const start = getRelationBorderPoint(source, targetCenter.x, targetCenter.y)
+    const end = getRelationBorderPoint(target, sourceCenter.x, sourceCenter.y)
+    const dx = targetCenter.x - sourceCenter.x
+    const dy = targetCenter.y - sourceCenter.y
+    const length = Math.hypot(dx, dy) || 1
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI
+    const ux = dx / length
+    const uy = dy / length
+
+    return {
+      d: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
+      sourceX: start.x, sourceY: start.y,
+      targetX: end.x, targetY: end.y,
+      sourceAngle: angle, targetAngle: angle,
+      midX: (start.x + end.x) / 2,
+      midY: (start.y + end.y) / 2,
+      sourceLabelX: start.x + 24 * ux - 10 * uy,
+      sourceLabelY: start.y + 24 * uy + 10 * ux,
+      targetLabelX: end.x - 24 * ux - 10 * uy,
+      targetLabelY: end.y - 24 * uy + 10 * ux,
     }
   }
 

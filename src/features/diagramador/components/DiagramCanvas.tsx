@@ -11,7 +11,7 @@ import { FileCode2, Plus } from 'lucide-react'
 import type { DiagramaResponse } from '../../../services/diagramaService'
 import { UmlRelationEdge } from '../../diagrams/components/edges/UmlRelationEdge'
 import type { ClassFlowEdge, ClassFlowNode, RelationType } from '../../diagrams/types/relation.types'
-import { getRelationPath, normalizeRelationType, relationUsesCardinality } from '../../diagrams/utils/relation-markers'
+import { getRelationBorderPoint, getRelationPath, normalizeRelationType, relationUsesCardinality } from '../../diagrams/utils/relation-markers'
 import { ClassNode } from './ClassNode'
 
 const nodeTypes = {
@@ -33,19 +33,15 @@ type RelationEndpointProps = {
 function RelationEndpoint({ angle, relationType, variant, x, y }: RelationEndpointProps) {
   const transform = `translate(${x} ${y}) rotate(${angle})`
 
-  if (variant === 'target' && relationType === 'association') {
-    return <polyline className="relation-symbol relation-symbol-arrow" points="-18,-8 0,0 -18,8" transform={transform} />
-  }
-
   if (variant === 'target' && (relationType === 'generalization' || relationType === 'realization')) {
-    return <polygon className="relation-symbol relation-symbol-triangle" points="0,0 -22,-11 -22,11" transform={transform} />
+    return <polygon className="relation-symbol relation-symbol-triangle" points="0,0 -20,-7 -20,7" transform={transform} />
   }
 
   if (variant === 'source' && (relationType === 'composition' || relationType === 'aggregation')) {
     return (
       <polygon
         className={`relation-symbol relation-symbol-diamond relation-symbol-${relationType}`}
-        points="0,0 13,-9 26,0 13,9"
+        points="0,0 11,-6 22,0 11,6"
         transform={transform}
       />
     )
@@ -141,20 +137,21 @@ export function DiagramCanvas({
               return null
             }
 
-            const path = getRelationPath(source, target)
             const relationType = normalizeRelationType(edge.data?.relationType)
+            const useReferenceStyle = relationType === 'association' || relationType === 'associationClass' || relationType === 'generalization'
+              || relationType === 'composition' || relationType === 'aggregation'
+            const path = getRelationPath(source, target, useReferenceStyle)
             const relationName = typeof edge.data?.name === 'string' ? edge.data.name.trim() : ''
             const showCardinality = relationUsesCardinality(relationType)
             const associationClassId = edge.data?.associationClassId
             const associationClassNode =
               typeof associationClassId === 'string' ? nodes.find((node) => node.id === associationClassId) : null
-            const associationClassCenterX = associationClassNode ? associationClassNode.position.x + 122.5 : 0
-            const associationClassConnectorY = associationClassNode
-              ? associationClassNode.position.y + (associationClassNode.position.y <= path.midY ? 138 : 0)
-              : 0
+            const associationClassAnchor = associationClassNode
+              ? getRelationBorderPoint(associationClassNode, path.midX, path.midY)
+              : null
 
             return (
-              <svg className="relation-overlay" key={edge.id}>
+              <svg className={useReferenceStyle ? 'relation-overlay relation-overlay-reference' : 'relation-overlay'} key={edge.id}>
                 <path
                   className={`relation-overlay-path relation-overlay-${relationType} ${
                     selectedEdgeId === edge.id ? 'selected' : ''
@@ -163,18 +160,22 @@ export function DiagramCanvas({
                 />
                 <RelationEndpoint angle={path.sourceAngle} relationType={relationType} variant="source" x={path.sourceX} y={path.sourceY} />
                 <RelationEndpoint angle={path.targetAngle} relationType={relationType} variant="target" x={path.targetX} y={path.targetY} />
-                {relationType === 'associationClass' && !relationName ? (
-                  <g className="relation-association-class-badge" transform={`translate(${path.midX - 39} ${path.midY - 15})`}>
-                    <rect height="30" rx="7" width="78" />
-                    <text x="39" y="19">
-                      assoc. class
-                    </text>
-                  </g>
+                {useReferenceStyle ? (
+                  <path
+                    className="relation-overlay-hit-area"
+                    d={path.d}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setSelectedEdgeId(edge.id)
+                      setSelectedNodeId('')
+                      setStoredSelectedRelationId(edge.id)
+                    }}
+                  />
                 ) : null}
-                {relationType === 'associationClass' && associationClassNode ? (
+                {relationType === 'associationClass' && associationClassAnchor ? (
                   <path
                     className="relation-association-class-link"
-                    d={`M ${associationClassCenterX} ${associationClassConnectorY} L ${path.midX} ${path.midY}`}
+                    d={`M ${associationClassAnchor.x} ${associationClassAnchor.y} L ${path.midX} ${path.midY}`}
                   />
                 ) : null}
                 {relationName ? (
